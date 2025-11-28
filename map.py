@@ -13,9 +13,14 @@ path = [
     (800, 200),
     (1200, 200),
     (1200, 800),
-    (1700, 800),
-    (1700, 100),
+    (1500, 800),
+    (1500, 100),
 ]
+class Map:
+    class Map1:
+        pass
+    class Map2
+        pass
 
 class Bloon:
     def __init__(self, path, speed=2):
@@ -60,6 +65,8 @@ if __name__ == '__main__':
     running = True
     while running:
         for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                print(pygame.mouse.get_pos())
             if event.type == pygame.QUIT:
                 running = False
 
@@ -67,12 +74,23 @@ if __name__ == '__main__':
         screen.fill((0, 0, 0))
 
         #draw path
-        border_radius = 10  # Radius of the rounded corners
         for i in range(len(path) - 1):
-            start_pos = path[i]
-            rect = pygame.Rect(path[i][0], path[i][1], 100, 20)  # x, y, width, height
-            end_pos = path[i + 1]
-            pygame.draw.rect(screen, path_color, rect, 40)
+            rect = pygame.Rect(path[i][0] - 20, path[i][1] - 20, 100, 20)
+
+            if path[i][0] == path[i + 1][0]:  # vertical
+                rect.width = 40
+                # Add 40 to length (20 for start cap, 20 for end cap)
+                rect.height = abs(path[i + 1][1] - path[i][1]) + 40
+                # Subtract 20 to start drawing from the top edge, not the center
+                rect.y = min(path[i][1], path[i + 1][1]) - 20
+            else:  # horizontal
+                # Add 40 to length
+                rect.width = abs(path[i + 1][0] - path[i][0]) + 40
+                rect.height = 40
+                # Subtract 20 to start drawing from the left edge, not the center
+                rect.x = min(path[i][0], path[i + 1][0]) - 20
+
+            pygame.draw.rect(screen, path_color, rect, 0, border_radius=4)
 
         bloon.draw(screen)
         pygame.display.flip()
