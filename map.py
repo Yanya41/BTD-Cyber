@@ -6,163 +6,176 @@ import os
 PATH_WIDTH = 40
 SPEED = 3
 
+# === ANIMATION SETTINGS (CRITICAL) ===
+FRAME_RATE = 0.1  # Time in seconds each frame is displayed (e.g., 0.1s = 10 frames per second)
+FRAME_COUNT = 2  # <<< CRITICAL: Set this to the exact number of frame files you extracted (e.g., 4)
+SKELETON_FRAME_PREFIX = "skeleton_frame"  # <<< Update this if your files are named differently (e.g., "enemy_walk")
+# =====================================
+
+
 # Define your path waypoints
-path = [
-    (50, 100), (500, 100), (500, 400), (300, 400),
-    (300, 700), (800, 700), (800, 200), (1200, 200),
-    (1200, 800), (1700, 800), (1700, 100),
+path_points = [
+    (0, 100), (500, 100), (500, 400), (300, 400),
+    (300, 700), (800, 700), (800, 200), (1000, 200),
+    (1000, 800), (1200, 800), (1200, 100), (1400, 100), (1400, 1080)
 ]
 
 # --- ASSET FILE NAMES ---
 IMAGE_FOLDER = "Images"
 BG_FILENAME = "background_map1.png"
 PATH_TILE_FILENAME = "brick_path.png"
-CORNER_FILENAME = "brick_path_corner.png"
-SKELETON_FILENAME = "skeleton.png"
+
+
+# CORNER FILE IS NOW REMOVED
+# SKELETON_FILENAME is replaced by the frame prefix
+
+class Side_Menu:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.rect = pygame.Rect(1920 - width, 0, width, height)
+        self.color = (200, 200, 200)  # Light gray
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, self.color, self.rect)
+class Path:
+    # Removed corner_texture from __init__
+    def __init__(self, points, width, tile_texture):
+        self.points = points
+        self.width = width
+        self.half_width = width // 2
+        self.tile = tile_texture
+        self.TILE_STEP = self.half_width
+
+    def _draw_tiles(self, screen):
+        """
+        Draws the path tiles using aggressive tiling to cover all gaps,
+        including corners, with the straight path texture.
+        """
+        TILE_STEP = self.half_width
+
+        for i in range(len(self.points) - 1):
+            p1 = self.points[i]
+            p2 = self.points[i + 1]
+
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            dist = math.hypot(dx, dy)
+
+            if dist == 0: continue
+            dx_norm = dx / dist
+            dy_norm = dy / dist
+
+            # Segment length is distance + half_width (to account for the tile placed at p2).
+            segment_length = dist + self.half_width
+
+            # Start tiling 20px BEFORE p1
+            start_x = p1[0] - (dx_norm * self.half_width)
+            start_y = p1[1] - (dy_norm * self.half_width)
+
+            steps = int(segment_length // TILE_STEP)
+
+            # === FIX: Start the loop from index 1 instead of 0 ===
+            # Index 0 covers the space from p1-20 to p1. By starting at 1,
+            # we start drawing from the p1 to p1+20 section.
+            for s in range(1, steps + 1):
+                cur_x = start_x + (dx_norm * (TILE_STEP * s))
+                cur_y = start_y + (dy_norm * (TILE_STEP * s))
+
+                draw_pos_x = int(round(cur_x) - self.half_width)
+                draw_pos_y = int(round(cur_y) - self.half_width)
+
+                screen.blit(self.tile, (draw_pos_x, draw_pos_y))
+
+
+    def draw(self, screen):
+        """Draws the path."""
+        self._draw_tiles(screen)
+
+        # Draw a single tile at each point to ensure corners are fully filled
+        for p in self.points:
+            draw_rect = pygame.Rect(p[0] - self.half_width, p[1] - self.half_width, self.width, self.width)
+            screen.blit(self.tile, draw_rect.topleft)
 
 
 class Skeleton:
-    def __init__(self, path, speed=2, image=None):
-        self.path = path
-        self.x, self.y = path[0]
+    def __init__(self, path_points, speed=2, frames=None, frame_time=0.1):
+        self.path_points = path_points
+        self.x, self.y = path_points[0]
         self.speed = speed
         self.target_index = 1
-        self.image = image
-        self.flip_image = False  # Use horizontal flip instead of 360 rotation
+
+        # Animation properties
+        self.frames = frames if frames else []
+        self.current_frame = 0
+        self.frame_time = frame_time * 1000  # Convert to milliseconds
+        self.last_update = pygame.time.get_ticks()
+
+        self.flip_image = False
 
     def move(self):
-        if self.target_index >= len(self.path):
+        if self.target_index >= len(self.path_points):
             return
 
-        target_x, target_y = self.path[self.target_index]
+        target_x, target_y = self.path_points[self.target_index]
         dx = target_x - self.x
         dy = target_y - self.y
         dist = math.hypot(dx, dy)
 
+        # --- Update Animation Frame (Safe Check) ---
+        if self.frames:  # Only animate if frames were loaded
+            now = pygame.time.get_ticks()
+            if now - self.last_update > self.frame_time:
+                # Cycle frame index
+                self.current_frame = (self.current_frame + 1) % len(self.frames)
+                self.last_update = now
+        # ------------------------------------------
+
         if dist != 0:
             dx_norm = dx / dist
             dy_norm = dy / dist
-
             self.x += dx_norm * self.speed
             self.y += dy_norm * self.speed
 
-            # --- SKELETON FIX 3: Horizontal Flip Logic ---
-            # Flip the image if moving significantly left (negative dx)
+            # Check for horizontal direction to flip the sprite
             if dx_norm < -0.1:
                 self.flip_image = True
-            elif dx_norm > 0.1:  # Flip back if moving right (positive dx)
+            elif dx_norm > 0.1:
                 self.flip_image = False
-            # -----------------------------------------------------------
 
         if dist < self.speed:
             self.target_index += 1
 
     def draw(self, screen):
-        if self.image:
-            # --- SKELETON FIX 3: Use pygame.transform.flip ---
-            # Flip the original image horizontally based on the flag
-            display_image = pygame.transform.flip(self.image, self.flip_image, False)
+        if self.frames:
+            current_image = self.frames[self.current_frame]
 
-            # Center the image on the skeleton's position
+            # Flip the image based on movement direction
+            display_image = pygame.transform.flip(current_image, self.flip_image, False)
+
             new_rect = display_image.get_rect(center=(int(self.x), int(self.y)))
-
             screen.blit(display_image, new_rect.topleft)
         else:
+            # Draw a simple red circle fallback if no images loaded
             pygame.draw.circle(screen, (255, 0, 0), (int(self.x), int(self.y)), 12)
 
 
-def draw_textured_path(screen, path, texture):
-    half_width = PATH_WIDTH // 2
-    # Aggressively overlap tiles by 50% (stepping 20px for a 40px tile)
-    TILE_STEP = half_width
+def load_image(filename, scale_to=None, alpha=False):
+    path = os.path.join(IMAGE_FOLDER, filename)
+    try:
+        image = pygame.image.load(path)
 
-    for i in range(len(path) - 1):
-        p1 = path[i]
-        p2 = path[i + 1]
-
-        dx = p2[0] - p1[0]
-        dy = p2[1] - p1[1]
-        dist = math.hypot(dx, dy)
-
-        # Segment length to tile: Stop exactly half a tile width (20px) before p2.
-        segment_length = dist - half_width
-
-        if segment_length <= 0:
-            continue
-
-        dx_norm = dx / dist
-        dy_norm = dy / dist
-
-        # Calculate steps based on the aggressive overlap (stepping every 20px)
-        steps = int(segment_length // TILE_STEP)
-
-        # Draw 2 extra steps to ensure full coverage up to the corner gap
-        for s in range(steps + 2):
-            cur_x = p1[0] + (dx_norm * (TILE_STEP * s))
-            cur_y = p1[1] + (dy_norm * (TILE_STEP * s))
-
-            # Crucially, still rely on rounding for the draw position
-            draw_pos_x = int(round(cur_x) - half_width)
-            draw_pos_y = int(round(cur_y) - half_width)
-
-            screen.blit(texture, (draw_pos_x, draw_pos_y))
-
-            screen.blit(texture, (draw_pos_x, draw_pos_y))
-
-
-def draw_rounded_joints(screen, path, path_corner):
-    """
-    FIX 2: Uses simplified coordinate-based checks for rotation, correcting the corner placement.
-    Assumes path_corner.png is oriented for a RIGHT -> UP turn (Top-Right quadrant).
-    """
-
-    for i in range(1, len(path) - 1):
-        p_prev = path[i - 1]
-        p_current = path[i]
-        p_next = path[i + 1]
-
-        # Determine the change in direction using coordinate comparison
-        x_turn = (p_next[0] > p_current[0])  # Is the path going RIGHT?
-        x_in = (p_current[0] > p_prev[0])  # Was the path coming from the LEFT?
-
-        y_turn = (p_next[1] > p_current[1])  # Is the path going DOWN?
-        y_in = (p_current[1] > p_prev[1])  # Was the path coming from UP?
-
-        # Skip if the path is straight
-        if (p_prev[0] == p_current[0] and p_current[0] == p_next[0]) or \
-                (p_prev[1] == p_current[1] and p_current[1] == p_next[1]):
-            continue
-
-        # --- Determine Rotation based on TOP-RIGHT Corner Asset (0 degrees) ---
-        rotation = 0
-
-        # 1. Turn: RIGHT -> UP (Asset base orientation)
-        if x_in and not y_turn:
-            rotation = 0
-
-            # 2. Turn: UP -> LEFT
-        elif not y_in and not x_turn:
-            rotation = 90
-
-        # 3. Turn: LEFT -> DOWN
-        elif not x_in and y_turn:
-            rotation = 180
-
-        # 4. Turn: DOWN -> RIGHT
-        elif y_in and x_turn:
-            rotation = 270
-
+        if alpha:
+            image = image.convert_alpha()
         else:
-            continue
+            image = image.convert()
 
-        # --- Draw the Rotated Corner ---
-        sprite = path_corner
-        rotated_image = pygame.transform.rotate(sprite, rotation)
-
-        # Center the corner sprite EXACTLY on the path point
-        new_rect = rotated_image.get_rect(center=(int(p_current[0]), int(p_current[1])))
-
-        screen.blit(rotated_image, new_rect.topleft)
+        if scale_to:
+            image = pygame.transform.scale(image, scale_to)
+        return image
+    except FileNotFoundError:
+        print(f"ERROR: Image file not found: {path}")
+        return None
 
 
 if __name__ == '__main__':
@@ -170,48 +183,36 @@ if __name__ == '__main__':
     screen = pygame.display.set_mode((1920, 1080))
     clock = pygame.time.Clock()
 
-
-    def load_image(filename, scale_to=None, alpha=False):
-        # Use os.path.join to handle file paths across different operating systems
-        path = os.path.join(IMAGE_FOLDER, filename)
-        try:
-            image = pygame.image.load(path)
-            if alpha:
-                image = image.convert_alpha()
-            else:
-                image = image.convert()
-
-            if scale_to:
-                image = pygame.transform.scale(image, scale_to)
-            return image
-        except FileNotFoundError:
-            print(f"ERROR: Image file not found: {path}")
-            return None
-
-
-    # --- LOAD ALL GAME ASSETS ---
-
-    # Background Image
+    # --- LOAD ASSETS ---
     bg_image = load_image(BG_FILENAME, scale_to=(1920, 1080))
     if bg_image is None:
         bg_image = pygame.Surface((1920, 1080))
-        bg_image.fill((34, 139, 34))  # Fallback color
+        bg_image.fill((34, 139, 34))  # Fallback: Dark Green
 
-    # Path Tile
     path_texture = load_image(PATH_TILE_FILENAME, scale_to=(PATH_WIDTH, PATH_WIDTH))
     if path_texture is None:
         path_texture = pygame.Surface((PATH_WIDTH, PATH_WIDTH))
-        path_texture.fill((160, 82, 45))  # Fallback color
+        path_texture.fill((160, 82, 45))  # Fallback: Brown
 
-    # Corner Sprite
-    path_corner = load_image(CORNER_FILENAME, scale_to=(PATH_WIDTH, PATH_WIDTH), alpha=True)
-    if path_corner is None:
-        path_corner = path_texture  # Fallback to square tile
+    # --- Load ALL Skeleton Frames ---
+    skeleton_frames = []
+    for i in range(FRAME_COUNT):
+        frame_filename = f"{SKELETON_FRAME_PREFIX}_{i}.png"
+        frame_image = load_image(frame_filename, scale_to=(40, 40), alpha=True)
 
-    # Skeleton Sprite
-    skeleton_image = load_image(SKELETON_FILENAME, scale_to=(64, 64), alpha=True)
+        if frame_image:
+            # Assuming the skeleton has a black background to remove
+            frame_image.set_colorkey((0, 0, 0))
+            skeleton_frames.append(frame_image)
+        else:
+            print(f"Warning: Could not load {frame_filename}. Animation may be incomplete.")
+    # -----------------------------------
 
-    skeleton = Skeleton(path, speed=SPEED, image=skeleton_image)
+    # Initialize Path (only takes tile texture)
+    game_path = Path(path_points, PATH_WIDTH, path_texture)
+
+    # Initialize Skeleton
+    skeleton = Skeleton(path_points, speed=SPEED, frames=skeleton_frames, frame_time=FRAME_RATE)
 
     running = True
     while running:
@@ -221,16 +222,8 @@ if __name__ == '__main__':
 
         skeleton.move()
 
-        # --- DRAWING ---
         screen.blit(bg_image, (0, 0))
-
-        # 1. Draw the main path body (with gap fix)
-        draw_textured_path(screen, path, path_texture)
-
-        # 2. Draw the rounded corners on top (with rotation fix)
-        draw_rounded_joints(screen, path, path_corner)
-
-        # 3. Draw the skeleton (with flip fix)
+        game_path.draw(screen)
         skeleton.draw(screen)
 
         pygame.display.flip()

@@ -1,56 +1,66 @@
 import pygame
+import os
 
-pygame.init()
+# --- CONFIGURATION ---
+PATH_WIDTH = 40
+CORNER_FILENAME = "brick_path_corner.png"
+IMAGE_FOLDER = "Images"
+WINDOW_SIZE = (200, 200)
 
-screen_width = 800
-screen_height = 600
-screen = pygame.display.set_mode((screen_width, screen_height))
-pygame.display.set_caption("Main Menu")
 
-font = pygame.font.SysFont(None, 50)
+def load_corner_image():
+    """Safely loads the corner image with transparency."""
+    path = os.path.join(IMAGE_FOLDER, CORNER_FILENAME)
+    try:
+        # Load the image and use convert_alpha for transparency
+        image = pygame.image.load(path).convert_alpha()
+        # Scale it to the correct size
+        image = pygame.transform.scale(image, (PATH_WIDTH, PATH_WIDTH))
+        return image
+    except FileNotFoundError:
+        print(f"ERROR: Image file not found at: {path}")
+        return None
+    except pygame.error as e:
+        print(f"ERROR loading image: {e}")
+        return None
 
-def draw_text(text, font, color, surface, x, y):
-    textobj = font.render(text, True, color)
-    textrect = textobj.get_rect()
-    textrect.center = (x, y)
-    surface.blit(textobj, textrect)
 
-def main_menu():
-    while True:
-        screen.fill((0, 0, 0))  # Black background
+def test_corner_transparency():
+    pygame.init()
+    screen = pygame.display.set_mode(WINDOW_SIZE)
+    pygame.display.set_caption("Corner Transparency Test")
+    clock = pygame.time.Clock()
 
-        draw_text("My Awesome Game", font, (255, 255, 255), screen, screen_width // 2, 100)
+    corner_image = load_corner_image()
 
-        # Play Button
-        play_button_rect = pygame.Rect(screen_width // 2 - 100, 250, 200, 50)
-        pygame.draw.rect(screen, (0, 150, 0), play_button_rect) # Green button
-        draw_text("Play", font, (255, 255, 255), screen, play_button_rect.centerx, play_button_rect.centery)
+    if corner_image is None:
+        print("Cannot run test: Corner image failed to load.")
+        pygame.quit()
+        return
 
-        # Options Button
-        options_button_rect = pygame.Rect(screen_width // 2 - 100, 350, 200, 50)
-        pygame.draw.rect(screen, (0, 0, 150), options_button_rect) # Blue button
-        draw_text("Options", font, (255, 255, 255), screen, options_button_rect.centerx, options_button_rect.centery)
+    # Center the corner image on the screen
+    x = (WINDOW_SIZE[0] // 2) - (PATH_WIDTH // 2)
+    y = (WINDOW_SIZE[1] // 2) - (PATH_WIDTH // 2)
 
-        # Exit Button
-        exit_button_rect = pygame.Rect(screen_width // 2 - 100, 450, 200, 50)
-        pygame.draw.rect(screen, (150, 0, 0), exit_button_rect) # Red button
-        draw_text("Exit", font, (255, 255, 255), screen, exit_button_rect.centerx, exit_button_rect.centery)
-
+    running = True
+    while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if play_button_rect.collidepoint(event.pos):
-                    print("Play button pressed!")
-                    # Add code to start the game
-                elif options_button_rect.collidepoint(event.pos):
-                    print("Options button pressed!")
-                    # Add code to open options menu
-                elif exit_button_rect.collidepoint(event.pos):
-                    pygame.quit()
-                    quit()
+                running = False
 
-        pygame.display.update()
+        # --- Drawing ---
+        # Draw a solid, contrasting color background (e.g., dark blue)
+        # The transparent areas of the corner image should show this color.
+        screen.fill((50, 50, 150))
 
-main_menu()
+        # Blit the corner image
+        screen.blit(corner_image, (x, y))
+
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+
+
+if __name__ == '__main__':
+    test_corner_transparency()
