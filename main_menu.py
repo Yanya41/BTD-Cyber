@@ -1,5 +1,5 @@
 import pygame
-
+import load_assets
 class MainMenu:
     def __init__(self, screen):
         self.screen = screen
@@ -79,6 +79,10 @@ class MainMenu:
 
 
 if __name__ == "__main__":
+    if not load_assets.check_files_exist():
+        print("Missing assets, exiting.")
+        pygame.quit()
+        exit()
     pygame.init()
     pygame.mixer.init()
 

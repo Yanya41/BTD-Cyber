@@ -2,6 +2,8 @@ import pygame
 import math
 import os
 
+from pygame import MOUSEBUTTONDOWN
+
 # --- CONFIGURATION ---
 PATH_WIDTH = 40
 SPEED = 3
@@ -15,19 +17,12 @@ SKELETON_FRAME_PREFIX = "skeleton_frame"  # <<< Update this if your files are na
 
 # Define your path waypoints
 path_points = [
-    (0, 100), (500, 100), (500, 400), (300, 400),
-    (300, 700), (800, 700), (800, 200), (1000, 200),
-    (1000, 800), (1200, 800), (1200, 100), (1400, 100), (1400, 1080)
+    (0,168), (513,418), (611,184), (1358,350), (709,425), (700, 586), (758, 1080)
 ]
 
 # --- ASSET FILE NAMES ---
 IMAGE_FOLDER = "Images"
-BG_FILENAME = "background_map1.png"
-PATH_TILE_FILENAME = "brick_path.png"
-
-
-# CORNER FILE IS NOW REMOVED
-# SKELETON_FILENAME is replaced by the frame prefix
+BG_FILENAME = "map1.png"
 
 class Side_Menu:
     def __init__(self, width, height):
@@ -35,68 +30,23 @@ class Side_Menu:
         self.height = height
         self.rect = pygame.Rect(1920 - width, 0, width, height)
         self.color = (200, 200, 200)  # Light gray
-
+    def side_menu_text(self):
+        pass
+    
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, self.rect)
-class Path:
-    # Removed corner_texture from __init__
-    def __init__(self, points, width, tile_texture):
-        self.points = points
-        self.width = width
-        self.half_width = width // 2
-        self.tile = tile_texture
-        self.TILE_STEP = self.half_width
+        wizard = load_image(r"Cards\wizard.png", scale_to=(100, 100), alpha=True)
+        archer = load_image(r"Cards\archer.png", scale_to=(100, 100), alpha=True)
+        screen.blit(archer, (1920 - self.width + 150, 200))
+        screen.blit(wizard, (1920 - self.width + 20, 200))
 
-    def _draw_tiles(self, screen):
-        """
-        Draws the path tiles using aggressive tiling to cover all gaps,
-        including corners, with the straight path texture.
-        """
-        TILE_STEP = self.half_width
-
-        for i in range(len(self.points) - 1):
-            p1 = self.points[i]
-            p2 = self.points[i + 1]
-
-            dx = p2[0] - p1[0]
-            dy = p2[1] - p1[1]
-            dist = math.hypot(dx, dy)
-
-            if dist == 0: continue
-            dx_norm = dx / dist
-            dy_norm = dy / dist
-
-            # Segment length is distance + half_width (to account for the tile placed at p2).
-            segment_length = dist + self.half_width
-
-            # Start tiling 20px BEFORE p1
-            start_x = p1[0] - (dx_norm * self.half_width)
-            start_y = p1[1] - (dy_norm * self.half_width)
-
-            steps = int(segment_length // TILE_STEP)
-
-            # === FIX: Start the loop from index 1 instead of 0 ===
-            # Index 0 covers the space from p1-20 to p1. By starting at 1,
-            # we start drawing from the p1 to p1+20 section.
-            for s in range(1, steps + 1):
-                cur_x = start_x + (dx_norm * (TILE_STEP * s))
-                cur_y = start_y + (dy_norm * (TILE_STEP * s))
-
-                draw_pos_x = int(round(cur_x) - self.half_width)
-                draw_pos_y = int(round(cur_y) - self.half_width)
-
-                screen.blit(self.tile, (draw_pos_x, draw_pos_y))
-
+class Map_Background:
+    def __init__(self, image):
+        self.image = image
+        screen.blit(self.image, (0, 0))
 
     def draw(self, screen):
-        """Draws the path."""
-        self._draw_tiles(screen)
-
-        # Draw a single tile at each point to ensure corners are fully filled
-        for p in self.points:
-            draw_rect = pygame.Rect(p[0] - self.half_width, p[1] - self.half_width, self.width, self.width)
-            screen.blit(self.tile, draw_rect.topleft)
-
+        screen.blit(self.image, (0, 0))
 
 class Skeleton:
     def __init__(self, path_points, speed=2, frames=None, frame_time=0.1):
@@ -189,16 +139,11 @@ if __name__ == '__main__':
         bg_image = pygame.Surface((1920, 1080))
         bg_image.fill((34, 139, 34))  # Fallback: Dark Green
 
-    path_texture = load_image(PATH_TILE_FILENAME, scale_to=(PATH_WIDTH, PATH_WIDTH))
-    if path_texture is None:
-        path_texture = pygame.Surface((PATH_WIDTH, PATH_WIDTH))
-        path_texture.fill((160, 82, 45))  # Fallback: Brown
-
     # --- Load ALL Skeleton Frames ---
     skeleton_frames = []
     for i in range(FRAME_COUNT):
         frame_filename = f"{SKELETON_FRAME_PREFIX}_{i}.png"
-        frame_image = load_image(frame_filename, scale_to=(40, 40), alpha=True)
+        frame_image = load_image(frame_filename, scale_to=(60, 60), alpha=True)
 
         if frame_image:
             # Assuming the skeleton has a black background to remove
@@ -208,22 +153,22 @@ if __name__ == '__main__':
             print(f"Warning: Could not load {frame_filename}. Animation may be incomplete.")
     # -----------------------------------
 
-    # Initialize Path (only takes tile texture)
-    game_path = Path(path_points, PATH_WIDTH, path_texture)
-
     # Initialize Skeleton
     skeleton = Skeleton(path_points, speed=SPEED, frames=skeleton_frames, frame_time=FRAME_RATE)
+    side_menu = Side_Menu(300, 1080)
+    draw_map = Map_Background(bg_image)
 
     running = True
     while running:
         for event in pygame.event.get():
+            if event.type == MOUSEBUTTONDOWN:
+                print(pygame.mouse.get_pos())
             if event.type == pygame.QUIT:
                 running = False
 
         skeleton.move()
-
-        screen.blit(bg_image, (0, 0))
-        game_path.draw(screen)
+        draw_map.draw(screen)
+        side_menu.draw(screen)
         skeleton.draw(screen)
 
         pygame.display.flip()
