@@ -1,12 +1,14 @@
 import pygame
-import math
 import os
+from game_data import Data
+from skeleton_rounds import Skeleton, Round
+
 
 from pygame import MOUSEBUTTONDOWN
 
+
 # --- CONFIGURATION ---
 PATH_WIDTH = 40
-SPEED = 3
 
 # === ANIMATION SETTINGS (CRITICAL) ===
 FRAME_RATE = 0.1  # Time in seconds each frame is displayed (e.g., 0.1s = 10 frames per second)
@@ -47,67 +49,6 @@ class Map_Background:
 
     def draw(self, screen):
         screen.blit(self.image, (0, 0))
-
-class Skeleton:
-    def __init__(self, path_points, speed=2, frames=None, frame_time=0.1):
-        self.path_points = path_points
-        self.x, self.y = path_points[0]
-        self.speed = speed
-        self.target_index = 1
-
-        # Animation properties
-        self.frames = frames if frames else []
-        self.current_frame = 0
-        self.frame_time = frame_time * 1000  # Convert to milliseconds
-        self.last_update = pygame.time.get_ticks()
-
-        self.flip_image = False
-
-    def move(self):
-        if self.target_index >= len(self.path_points):
-            return
-
-        target_x, target_y = self.path_points[self.target_index]
-        dx = target_x - self.x
-        dy = target_y - self.y
-        dist = math.hypot(dx, dy)
-
-        # --- Update Animation Frame (Safe Check) ---
-        if self.frames:  # Only animate if frames were loaded
-            now = pygame.time.get_ticks()
-            if now - self.last_update > self.frame_time:
-                # Cycle frame index
-                self.current_frame = (self.current_frame + 1) % len(self.frames)
-                self.last_update = now
-        # ------------------------------------------
-
-        if dist != 0:
-            dx_norm = dx / dist
-            dy_norm = dy / dist
-            self.x += dx_norm * self.speed
-            self.y += dy_norm * self.speed
-
-            # Check for horizontal direction to flip the sprite
-            if dx_norm < -0.1:
-                self.flip_image = True
-            elif dx_norm > 0.1:
-                self.flip_image = False
-
-        if dist < self.speed:
-            self.target_index += 1
-
-    def draw(self, screen):
-        if self.frames:
-            current_image = self.frames[self.current_frame]
-
-            # Flip the image based on movement direction
-            display_image = pygame.transform.flip(current_image, self.flip_image, False)
-
-            new_rect = display_image.get_rect(center=(int(self.x), int(self.y)))
-            screen.blit(display_image, new_rect.topleft)
-        else:
-            # Draw a simple red circle fallback if no images loaded
-            pygame.draw.circle(screen, (255, 0, 0), (int(self.x), int(self.y)), 12)
 
 
 def load_image(filename, scale_to=None, alpha=False):
@@ -154,7 +95,7 @@ if __name__ == '__main__':
     # -----------------------------------
 
     # Initialize Skeleton
-    skeleton = Skeleton(path_points, speed=SPEED, frames=skeleton_frames, frame_time=FRAME_RATE)
+    skeleton = Skeleton(speed=3, frames=skeleton_frames, frame_time=FRAME_RATE)
     side_menu = Side_Menu(300, 1080)
     draw_map = Map_Background(bg_image)
 
