@@ -1,23 +1,23 @@
+from load_assets import skeleton_frames, shielded_skeleton_frames
 import math
 import pygame
 from game_data import Data
 data = Data()
-class Skeleton:
-    def __init__(self, speed, frames=None, frame_time=0.1):
+class Enemy:
+    def __init__(self, speed, frame_time=0.1):
         self.path_points = data.path_points
         self.x, self.y = data.path_points[0]
         self.speed = speed
         self.target_index = 1
-        self.path_points = data.path_points
-        self.frames = frames if frames else []
         self.current_frame = 0
         self.frame_time = frame_time * 1000
         self.last_update = pygame.time.get_ticks()
-
         self.flip_image = False
+        self.frames = []  # To be set by subclasses
 
     def move(self):
         if self.target_index >= len(self.path_points):
+            print (len(self.path_points))
             return
 
         target_x, target_y = self.path_points[self.target_index]
@@ -51,16 +51,14 @@ class Skeleton:
         else:
             pygame.draw.circle(screen, (255, 0, 0), (int(self.x), int(self.y)), 12)
 
+class Skeleton(Enemy):
+    def __init__(self, speed=2, frame_time=0.1):
+        super().__init__(speed)
+        self.frames = skeleton_frames
+        self.frame_time = frame_time
 
-class Round:
-    def __init__(self):
-        self.enemies = {}
-        self.current_round = 1
-        self.round_in_progress = False
-        self.enemy_id = 1
-
-
-    def rounds_spawns(self):
-        if self.current_round == 1:
-            enemy = Skeleton()
-
+class ShieldedSkeleton(Enemy):
+    def __init__(self, speed=1.5, frame_time=0.1):
+        super().__init__(speed)
+        self.frames = shielded_skeleton_frames
+        self.frame_time = frame_time
