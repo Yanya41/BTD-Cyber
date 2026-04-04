@@ -17,8 +17,7 @@ class Enemy:
 
     def move(self):
         if self.target_index >= len(self.path_points):
-            print (len(self.path_points))
-            return
+            return True
 
         target_x, target_y = self.path_points[self.target_index]
         dx = target_x - self.x
@@ -42,6 +41,8 @@ class Enemy:
         if dist < self.speed:
             self.target_index += 1
 
+        return False
+
     def draw(self, screen):
         if self.frames:
             image = self.frames[self.current_frame]
@@ -52,13 +53,13 @@ class Enemy:
             pygame.draw.circle(screen, (255, 0, 0), (int(self.x), int(self.y)), 12)
 
 class Skeleton(Enemy):
-    def __init__(self, speed=2, frame_time=0.1):
+    def __init__(self, speed=2, frame_time=(1000//60)):
         super().__init__(speed)
         self.frames = skeleton_frames
         self.frame_time = frame_time
 
 class ShieldedSkeleton(Enemy):
-    def __init__(self, speed=1.5, frame_time=0.1):
+    def __init__(self, speed=1.5, frame_time=1000//60):
         super().__init__(speed)
         self.frames = shielded_skeleton_frames
         self.frame_time = frame_time
