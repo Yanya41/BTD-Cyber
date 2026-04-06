@@ -15,8 +15,10 @@ class Enemy:
         self.flip_image = False
         self.frames = []  # To be set by subclasses
 
-    def move(self):
+    def move(self,dmg):
         if self.target_index >= len(self.path_points):
+            # This now refers to the same global data object
+            Data().update_hp(dmg)
             return True
 
         target_x, target_y = self.path_points[self.target_index]
@@ -57,9 +59,13 @@ class Skeleton(Enemy):
         super().__init__(speed)
         self.frames = skeleton_frames
         self.frame_time = frame_time
+        self.dmg = 1
+        self.hp = 1
 
 class ShieldedSkeleton(Enemy):
     def __init__(self, speed=1.5, frame_time=1000//60):
         super().__init__(speed)
         self.frames = shielded_skeleton_frames
         self.frame_time = frame_time
+        self.dmg = 2
+        self.hp = 3
