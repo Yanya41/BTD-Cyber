@@ -1,20 +1,13 @@
 #the base configuration for the skeleton frames are 2, and frame rate is 0.1
-from game_data import Data
 from load_assets import load_image, background_image, screen
 import pygame
-import os
 from game_data import Data
 from rounds import Round
-
-from pygame import MOUSEBUTTONDOWN
+import math
+from towers import Tower
 MineFont = r'Images\MineFont.ttf'
-
 path_width = 40
 
-# where the path goes through
-path_points = [
-    (0,168), (513,418), (611,184), (1358,350), (709,425), (700, 586), (758, 1080)
-]
 
 # file names
 image_folder = "Images"
@@ -93,49 +86,97 @@ if __name__ == '__main__':
     #setup pygame and the screen
     pygame.init()
     clock = pygame.time.Clock()
-
-
-
+    #create instances of the classes
     side_menu = Side_Menu(300, 1080)
     draw_map = Map_Background((34, 139, 34)) # Passing a Green RGB tuple
     draw_buttons = Buttons()
-
     round_manager = Round()
-    #main game loop
     enemies = round_manager.enemies
+
+    projectiles = []
+    tower_manager = Tower()
+    placed_towers = []
+    dragging_tower = None  # Holds the type string (e.g., "goku")
+
+    #the main game loop
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
-            if event.type == MOUSEBUTTONDOWN:
-                print(pygame.mouse.get_pos())
-                if 1670 <= pygame.mouse.get_pos()[0] <= 1870 and 950 <= pygame.mouse.get_pos()[1] <= 1000:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = pygame.mouse.get_pos()
+                if 1670 <= mx <= 1870 and 950 <= my <= 1000: # Check if the "Start Round" button is clicked
                     round_manager.start_next_round()
+                    # Goku Icon
+                elif (1920 - side_menu.width + 150) <= mx <= (1920 - side_menu.width + 250) and 200 <= my <= 300:
+                    if Data().current_cash >= 550:
+                        dragging_tower = "goku"
 
-            # Detect Space Key
+            if event.type == pygame.MOUSEBUTTONUP:
+                if dragging_tower:
+                    mx, my = pygame.mouse.get_pos()
+                    # Check if the mouse is released within the map area (not on the side menu)
+                    if mx < 1920 - side_menu.width:
+                        new_tower = tower_manager.create_tower(dragging_tower,mx,my)
+                        new_tower.x, new_tower.y = mx, my
+                        placed_towers.append(new_tower)
+                        Data().current_cash -= new_tower.cost
+                    dragging_tower = None  # Stop dragging after placing
+
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_SPACE: # Start the next round when space is pressed
                     round_manager.start_next_round()
-
-        # Update Spawning
         round_manager.update()
+        round_manager.enemies = [e for e in round_manager.enemies if e.move(e.dmg) == False] #if enemy doesn't move, it means it reached the end and is removed and deals dmg
 
-        # Pass the actual health from your round_manager or data object
-
-        # Update Movement and DESPAWN
-        # This line says: "Keep the enemy in the list ONLY IF enemy.move() is False"
-        round_manager.enemies = [e for e in round_manager.enemies if e.move(e.dmg) == False]
-
-        # Draw everything
+        #draw everything
         draw_map.draw(screen)
         side_menu.draw(screen)
-        # Pass the actual health from your round_manager or data object
         for btn in draw_buttons.buttons:
             draw_buttons.draw(screen, btn)
         for enemy in round_manager.enemies:
             enemy.draw(screen)
+
+        for tower in placed_towers:
+            # Use your load_image logic here to draw the tower at tower.x, tower.y
+            pass
+
+        # Draw the "Ghost" tower attached to mouse
+        if dragging_tower:
+            mx, my = pygame.mouse.get_pos()
+            # Draw a semi-transparent range circle
+            range_val = 200 if dragging_tower == "goku" else 150
+            surface = pygame.Surface((range_val * 2, range_val * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surface, (0, 0, 255, 50), (range_val, range_val), range_val)
+            screen.blit(surface, (mx - range_val, my - range_val))
+
+            # Draw the actual icon following the mouse
+            icon_path = r"Cards\goku.png" if dragging_tower == "goku" else r"Cards\wizard.png"
+            icon = load_image(icon_path, scale_to=(60, 60), alpha=True)
+            screen.blit(icon, (mx - 30, my - 30))
+
+        for tower in placed_towers:
+            if tower.tower_type == "goku" and tower.can_shoot():
+                # Find the first skeleton in range
+                for enemy in round_manager.enemies:
+                    dist = math.hypot(enemy.x - tower.x, enemy.y - tower.y)
+                    if dist <= tower.range:
+                        new_ball = tower.shoot(enemy)
+                        projectiles.append(new_ball)
+                        break  # Shoot only one skeleton per cooldown
+
+        # Update and Draw Projectiles
+        for p in projectiles[:]:
+            p.move()
+            p.draw(screen)
+            # Remove projectile if it hit or if target is dead
+            if p.reached_target or p.target.hp <= 0:
+                if p in projectiles:
+                    projectiles.remove(p)
+
+        # Update Skeletons (clean up dead ones)
+        round_manager.enemies = [e for e in round_manager.enemies if e.hp > 0]
 
         pygame.display.flip()
         clock.tick(60)

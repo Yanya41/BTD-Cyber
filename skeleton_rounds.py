@@ -15,6 +15,12 @@ class Enemy:
         self.flip_image = False
         self.frames = []  # To be set by subclasses
 
+        self.width = 24
+        self.height = 24
+
+    def get_hurtbox(self):
+        return pygame.Rect(int(self.x - self.width/2), int(self.y - self.height/2), self.width, self.height)
+
     def move(self,dmg):
         if self.target_index >= len(self.path_points):
             # This now refers to the same global data object

@@ -79,7 +79,7 @@ class MainMenu:
 
 
 if __name__ == "__main__":
-    if not load_assets.check_files_exist():
+    if load_assets.check_files_exist():
         print("Missing assets, exiting.")
         pygame.quit()
         exit()
