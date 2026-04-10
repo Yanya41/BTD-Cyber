@@ -1,5 +1,6 @@
 from load_assets import skeleton_frames, shielded_skeleton_frames
 import math
+import random
 import pygame
 from game_data import Data
 data = Data()
@@ -17,6 +18,7 @@ class Enemy:
 
         self.width = 24
         self.height = 24
+        self.id = random.randint(1, 1000000)  # Unique ID for tracking
 
     def get_hurtbox(self):
         return pygame.Rect(int(self.x - self.width/2), int(self.y - self.height/2), self.width, self.height)
