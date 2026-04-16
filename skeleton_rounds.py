@@ -69,6 +69,7 @@ class Skeleton(Enemy):
         self.frame_time = frame_time
         self.dmg = 1
         self.hp = 1
+        self.cash_price = 1
 
 class ShieldedSkeleton(Enemy):
     def __init__(self, speed=1.5, frame_time=1000//60):
@@ -76,4 +77,5 @@ class ShieldedSkeleton(Enemy):
         self.frames = shielded_skeleton_frames
         self.frame_time = frame_time
         self.dmg = 2
-        self.hp = 3
+        self.hp = 2
+        self.cash_price = 2

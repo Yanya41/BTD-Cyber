@@ -68,14 +68,17 @@ class Goku:
         self.path_right = 0
 
         # Base Stats
-        self.base_dmg = 3
+        self.base_dmg = 2
         self.base_speed = 1500  # ms
-        self.base_pierce = 1
+        self.base_pierce = 2
         self.base_size = 10
         self.base_range = 250
 
         self.angle = 270
         self.last_shot_time = 0
+
+        self.left_costs = [200, 450, 1200]
+        self.right_costs = [150, 400, 1000]
 
         # Sprite Loading
         try:
@@ -87,6 +90,24 @@ class Goku:
             self.idle_img.fill((255, 0, 255))
             self.shoot_img = self.idle_img
 
+    def upgrade_left(self, game_data):
+        if self.path_left == 2 and self.path_right == 3:
+            return False
+        if self.path_left < 3 and game_data.current_cash >= self.left_costs[self.path_left]:
+            game_data.current_cash -= self.left_costs[self.path_left]
+            self.path_left += 1
+            return True
+        return False
+
+    def upgrade_right(self, game_data):
+        if self.path_left == 3 and self.path_right == 2:
+            return False
+        if self.path_right < 3 and game_data.current_cash >= self.right_costs[self.path_right]:
+            game_data.current_cash -= self.right_costs[self.path_right]
+            self.path_right += 1
+            return True
+        return False
+
     @property
     def range(self):
         # Range can stay static or increase with upgrades here if you want
@@ -95,7 +116,7 @@ class Goku:
     def get_stats(self):
         """Calculates current stats based on upgrade paths."""
         # LEFT PATH: Speed -> Size -> Returns
-        speed = self.base_speed - (self.path_left * 200)  # -0.2s (200ms) per level
+        speed = self.base_speed - (200 if self.path_left >= 1 else 0)  # -0.2s (200ms) per level
         size = self.base_size + (10 if self.path_left >= 2 else 0)
         returns = True if self.path_left == 3 else False
 

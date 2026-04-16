@@ -4,12 +4,12 @@ from game_data import Data
 from rounds import Round
 from towers import Tower
 
-# Constants
 MineFont = r'Images\MineFont.ttf'
 goku_icon_path = r"Cards\goku.png"
 goku_idle_path = r"goku_idle.png"
 goku_shoot_path = r"goku_shoot.png"
 
+# the map
 class Map_Background:
     def __init__(self):
         self.path_points = Data().path_points
@@ -24,7 +24,48 @@ class Map_Background:
                 pygame.draw.circle(screen, self.road_color, pt, 25)
 
 
-class Side_Menu:
+
+
+class Upgrade_Panel: #this is the upgrade panel that is in the bottom left
+    def __init__(self, font):
+        self.font = font
+        self.rect = pygame.Rect(0, 880, 400, 200)  # Bottom left corner panel
+        self.color = (50, 50, 50)
+
+        # Buttons relative to the panel
+        self.btn_left = pygame.Rect(20, 920, 150, 50)
+        self.btn_right = pygame.Rect(200, 920, 150, 50)
+
+    def draw(self, screen, tower):
+        if not tower:
+            return  # Don't draw anything if no tower is selected
+
+        pygame.draw.rect(screen, self.color, self.rect)
+
+        # Title
+        title = self.font.render(f"{tower.tower_type.upper()} Upgrades", True, (255, 255, 255))
+        screen.blit(title, (120, 890))
+
+        # Left Path Button
+        pygame.draw.rect(screen, (0, 100, 200), self.btn_left)
+        if tower.path_left < 3:
+            cost_L = tower.left_costs[tower.path_left]
+            text_L = self.font.render(f"Left: ${cost_L}", True, (255, 255, 255))
+        else:
+            text_L = self.font.render("MAXED", True, (200, 0, 0))
+        screen.blit(text_L, (self.btn_left.x + 10, self.btn_left.y + 10))
+
+        # Right Path Button
+        pygame.draw.rect(screen, (200, 100, 0), self.btn_right)
+        if tower.path_right < 3:
+            cost_R = tower.right_costs[tower.path_right]
+            text_R = self.font.render(f"Right: ${cost_R}", True, (255, 255, 255))
+        else:
+            text_R = self.font.render("MAXED", True, (200, 0, 0))
+        screen.blit(text_R, (self.btn_right.x + 10, self.btn_right.y + 10))
+
+
+class Side_Menu: #this is the right side menu where you can purchase towers
     def __init__(self, width):
         self.width = width
         self.rect = pygame.Rect(1920 - width, 0, width, 1080)
@@ -62,39 +103,49 @@ class UI_Manager:
             screen.blit(text_surface, text_rect)
 
 
-# --- EXECUTION ---
+# execution starts here
 pygame.init()
 clock = pygame.time.Clock()
 
-# IMPORTANT: Create ONE instance of Data to keep track of HP/Cash
 game_data = Data()
 
 draw_map = Map_Background()
 side_menu = Side_Menu(300)
 ui = UI_Manager(pygame.font.Font(MineFont, 25))
+upgrade_panel = Upgrade_Panel(pygame.font.Font(MineFont, 20))
 round_manager = Round()
 tower_manager = Tower()
-
 placed_towers, projectiles = [], []
 dragging_tower, selected_tower = None, None
 
+# Main Game Loop
 running = True
 while running:
     m_pos = pygame.mouse.get_pos()
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
+        if event.type == pygame.MOUSEBUTTONDOWN: #handle all mouse button presses here
             mx, my = m_pos
-            # Start Round
-            if 1670 <= mx <= 1870 and 950 <= my <= 1000:
+            # upgrade panel
+            if selected_tower and upgrade_panel.rect.collidepoint(mx, my):
+                if upgrade_panel.btn_left.collidepoint(mx, my):
+                    selected_tower.upgrade_left(game_data)
+                elif upgrade_panel.btn_right.collidepoint(mx, my):
+                    selected_tower.upgrade_right(game_data)
+
+            # start round button
+            elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
                 round_manager.start_next_round()
-            # Shop Click
+
+            # the "shop"
             elif 1620 <= mx <= 1920 and 200 <= my <= 300:
                 if game_data.current_cash >= 550:
                     dragging_tower = "goku"
-            # Selection
-            selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40), None)
+
+            #deselect tower if clicking on something else
+            else:
+                selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40), None)
 
         if event.type == pygame.MOUSEBUTTONUP:
             if dragging_tower and m_pos[0] < 1620:
@@ -106,7 +157,7 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 round_manager.start_next_round()
-    # --- LOGIC ---
+    # logic section
     round_manager.update()
 
     # Move Skeletons & Handle Leaks
@@ -115,7 +166,7 @@ while running:
             round_manager.enemies.remove(e)
             game_data.current_hp -= e.dmg  # Damage the player
 
-    # Towers Shooting
+    # towers shooting
     for t in placed_towers:
         if t.can_shoot():
             for e in round_manager.enemies:
@@ -123,7 +174,7 @@ while running:
                     projectiles.append(t.shoot(e))
                     break
 
-    # Projectile Damage & Collision
+    # projectile damage & collision
     for p in projectiles[:]:
         p.move(round_manager.enemies)
 
@@ -143,10 +194,10 @@ while running:
         if p.x < -50 or p.x > 1970 or p.y < -50 or p.y > 1130:
             if p in projectiles: projectiles.remove(p)
 
-    # CRITICAL: Remove skeletons that have 0 HP
+    # Remove dead enemies
     round_manager.enemies = [e for e in round_manager.enemies if e.hp > 0]
 
-    # --- DRAWING ---
+    # drawing section
     draw_map.draw(screen)
     for e in round_manager.enemies: e.draw(screen)
     for p in projectiles: p.draw(screen)
@@ -154,6 +205,9 @@ while running:
 
     side_menu.draw(screen)
     ui.draw(screen, game_data)
+    if selected_tower:
+        pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range,2)  # Show range
+        upgrade_panel.draw(screen, selected_tower)
 
     if dragging_tower:
         icon = load_image(goku_idle_path, scale_to=(60, 60), alpha=True)
