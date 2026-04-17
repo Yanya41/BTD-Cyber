@@ -2,7 +2,7 @@ from load_assets import load_image, screen
 import pygame, math
 from game_data import Data
 from rounds import Round
-from towers import Tower
+from towers import TowerManager
 
 MineFont = r'Images\MineFont.ttf'
 goku_icon_path = r"Cards\goku.png"
@@ -10,18 +10,70 @@ goku_idle_path = r"goku_idle.png"
 goku_shoot_path = r"goku_shoot.png"
 
 # the map
+import pygame
+import random
+
+
 class Map_Background:
     def __init__(self):
+        # We grab the path directly from your Data class logic
+        from game_data import Data
         self.path_points = Data().path_points
-        self.color = (34, 139, 34)
-        self.road_color = (139, 69, 19)
+
+        # --- ENHANCED COLOR PALETTE ---
+        self.grass_base = (44, 149, 44)
+        self.grass_dark = (34, 120, 34)
+        self.grass_light = (54, 170, 54)
+        self.shadow_color = (25, 90, 25)
+
+        self.stone_edge = (120, 120, 125)
+        self.dirt_base = (170, 120, 80)
+        self.wagon_rut = (140, 95, 60)
+
+        # Create a blank "canvas" the size of the screen to draw the map on ONCE
+        self.bg_surface = pygame.Surface((1920, 1080))
+        self.render_static_background()
+
+    def render_static_background(self):
+        """Draws the complex map once to save FPS."""
+        # 1. Fill base grass
+        self.bg_surface.fill(self.grass_base)
+
+        # 2. Add Grass Detail (Procedural Noise)
+        # Draws thousands of tiny dots to make it look like a textured field
+        for _ in range(8000):
+            x = random.randint(0, 1920)
+            y = random.randint(0, 1080)
+            color = random.choice([self.grass_dark, self.grass_light])
+            radius = random.randint(1, 3)
+            pygame.draw.circle(self.bg_surface, color, (x, y), radius)
+
+        # 3. Draw Drop Shadow (Offset slightly down and right)
+        shadow_offset = 15
+        shadow_points = [(x + shadow_offset, y + shadow_offset) for x, y in self.path_points]
+
+        pygame.draw.lines(self.bg_surface, self.shadow_color, False, shadow_points, 60)
+        # Draw circles at the joints so the shadows have smooth corners
+        for pt in shadow_points:
+            pygame.draw.circle(self.bg_surface, self.shadow_color, pt, 30)
+
+        # 4. Draw the Detailed Road (Layered from thickest to thinnest)
+        layers = [
+            (self.stone_edge, 60),  # Layer 1: Outer rocky border
+            (self.dirt_base, 50),  # Layer 2: Main dirt surface
+            (self.wagon_rut, 30),  # Layer 3: Dark wheel tracks
+            (self.dirt_base, 14)  # Layer 4: Center dirt ridge
+        ]
+
+        # Loop through our layers and draw them on top of each other
+        for color, width in layers:
+            pygame.draw.lines(self.bg_surface, color, False, self.path_points, width)
+            for pt in self.path_points:
+                pygame.draw.circle(self.bg_surface, color, pt, width // 2)
 
     def draw(self, screen):
-        screen.fill(self.color)
-        if len(self.path_points) > 1:
-            pygame.draw.lines(screen, self.road_color, False, self.path_points, 50)
-            for pt in self.path_points:
-                pygame.draw.circle(screen, self.road_color, pt, 25)
+        # Instead of doing all that math every frame, just paste the finished picture!
+        screen.blit(self.bg_surface, (0, 0))
 
 
 
@@ -45,6 +97,9 @@ class Upgrade_Panel: #this is the upgrade panel that is in the bottom left
         # Title
         title = self.font.render(f"{tower.tower_type.upper()} Upgrades", True, (255, 255, 255))
         screen.blit(title, (120, 890))
+
+        dmg_text = self.font.render(f"Damage: {getattr(tower, 'damage_dealt')}", True, (200, 200, 200))
+        screen.blit(dmg_text, (150, 980))  # Placed bottom center of the panel
 
         # Left Path Button
         pygame.draw.rect(screen, (0, 100, 200), self.btn_left)
@@ -86,9 +141,9 @@ class UI_Manager:
         self.buttons.append((pygame.Rect(1670, 950, 200, 50), (0, 255, 0), "Start Round", (0, 0, 0)))  # start round button
         self.buttons.append((pygame.Rect(100, 50, 200, 50), (34, 139, 34), str(Data().current_hp) + " Health", (255, 0, 0)))  # health
         self.buttons.append((pygame.Rect(350, 50, 200, 50), (34, 139, 34), str(Data().starting_cash) + " Cash", (239, 191, 4)))  # cash
-        self.buttons.append((pygame.Rect(600, 50, 200, 50), (34, 139, 34), str(Round().current_round), (0, 0, 0)))  # round number
+        self.buttons.append((pygame.Rect(600, 50, 200, 50), (34, 139, 34), "Round " + str(Round().current_round), (0, 0, 0)))  # round number
 
-    def draw(self, screen, data):
+    def draw(self, screen, data, rounds):
         for button in self.buttons:
             pygame.draw.rect(screen, button[1], button[0])
             label = button[2]
@@ -96,9 +151,10 @@ class UI_Manager:
                 text_surface = self.font.render(f"{data.current_hp} Health", True, button[3])
             elif "Cash" in label:
                 text_surface = self.font.render(f"{data.current_cash} Cash", True, button[3])
+            elif "Round " in label:
+                text_surface = self.font.render("Round " f"{rounds.current_round}", True, button[3])
             else:
                 text_surface = self.font.render(label, True, button[3])
-
             text_rect = text_surface.get_rect(center=button[0].center)
             screen.blit(text_surface, text_rect)
 
@@ -114,7 +170,7 @@ side_menu = Side_Menu(300)
 ui = UI_Manager(pygame.font.Font(MineFont, 25))
 upgrade_panel = Upgrade_Panel(pygame.font.Font(MineFont, 20))
 round_manager = Round()
-tower_manager = Tower()
+tower_manager = TowerManager()
 placed_towers, projectiles = [], []
 dragging_tower, selected_tower = None, None
 
@@ -171,7 +227,9 @@ while running:
         if t.can_shoot():
             for e in round_manager.enemies:
                 if math.hypot(e.x - t.x, e.y - t.y) <= t.range:
-                    projectiles.append(t.shoot(e))
+                    new_projectile = t.shoot(e)
+                    new_projectile.owner = t  # Track which tower shot this projectile
+                    projectiles.append(new_projectile)
                     break
 
     # projectile damage & collision
@@ -184,6 +242,11 @@ while running:
                 # Increased collision distance to 45 for better reliability
                 if math.hypot(p.x - e.x, p.y - e.y) < 45:
                     e.hp -= p.dmg
+                    if hasattr(p,'owner'):
+                        if e.hp < 0:
+                            p.owner.damage_dealt += (p.dmg + e.hp) # Track damage for the tower that shot this projectile
+                        else:
+                            p.owner.damage_dealt += p.dmg
                     p.hit_enemies.append(id(e))
                     p.pierce -= 1
                     if p.pierce <= 0:
@@ -194,8 +257,22 @@ while running:
         if p.x < -50 or p.x > 1970 or p.y < -50 or p.y > 1130:
             if p in projectiles: projectiles.remove(p)
 
-    # Remove dead enemies
-    round_manager.enemies = [e for e in round_manager.enemies if e.hp > 0]
+        # Remove dead enemies and trigger death spawns
+        surviving_enemies = []
+        for e in round_manager.enemies:
+            if e.hp > 0:
+                surviving_enemies.append(e)
+            else:
+                # Enemy died! Give the player cash
+                game_data.current_cash += getattr(e, 'cash_price', 1)
+
+                # Check if this enemy drops things when it dies (like the Barrel)
+                if hasattr(e, 'on_death'):
+                    new_skeletons = e.on_death()
+                    surviving_enemies.extend(new_skeletons)
+
+        # Update the official enemy list
+        round_manager.enemies = surviving_enemies
 
     # drawing section
     draw_map.draw(screen)
@@ -204,13 +281,14 @@ while running:
     for t in placed_towers: t.draw(screen, 1)
 
     side_menu.draw(screen)
-    ui.draw(screen, game_data)
+    ui.draw(screen, game_data, round_manager)
     if selected_tower:
         pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range,2)  # Show range
         upgrade_panel.draw(screen, selected_tower)
 
     if dragging_tower:
         icon = load_image(goku_idle_path, scale_to=(60, 60), alpha=True)
+        pygame.draw.circle(screen, (255, 0, 255), (m_pos[0], m_pos[1]), 250,2)  # Show range
         if icon: screen.blit(icon, (m_pos[0] - 30, m_pos[1] - 30))
 
     pygame.display.flip()
