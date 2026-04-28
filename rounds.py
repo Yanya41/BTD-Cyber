@@ -28,20 +28,48 @@ class Round:
         if self.current_round == 1:
             # Format: (Enemy_Object, Milliseconds_to_wait)
             self.spawn_queue = [
-                (Skeleton(speed=3), 0),  # 1st skeleton spawns immediately (0ms wait)
-                (Skeleton(speed=3), 1000),  # 2nd skeleton waits 1 second
-                (Skeleton(speed=3), 500),  # 3rd skeleton rushes in after 0.5 seconds!
-                (Skeleton(speed=3), 500),  # 4th skeleton also rushes in 0.5 seconds later
-                (Skeleton(speed=3), 3000)  # 5th skeleton waits 3 long seconds
+                (Skeleton(speed=3), 0),
+                (Skeleton(speed=3), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 1000),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 1000),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
             ]
 
         elif self.current_round == 2:
             self.spawn_queue = [
                 (Skeleton(speed=3), 0),
-                (Skeleton(speed=3), 800),
-                (ShieldedSkeleton(speed=2), 1500),
-                (Skeleton(speed=3), 500),
-                (SkeletonBarrel(), 4000)  # Big boss waits 4 seconds before appearing
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 1000),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 100),
+                (Skeleton(speed=3), 1000),
+                (ShieldedSkeleton(speed=2), 0),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+                (ShieldedSkeleton(speed=2), 100),
+            ]
+        elif self.current_round == 3:
+            self.spawn_queue = [
+                (SkeletonBarrel(), 0)
             ]
 
     def update(self):

@@ -98,7 +98,7 @@ class SkeletonBarrel(Enemy):
 
         # Spawn 3 regular skeletons
         for _ in range(3):
-            skel = Skeleton(speed=2.5)
+            skel = Skeleton(speed=3)
 
             # 1. Set their position to the barrel's exact death position
             skel.x = self.x + random.randint(-15, 15)

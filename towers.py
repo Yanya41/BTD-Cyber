@@ -1,8 +1,49 @@
 import pygame
 import math
+import random
 
 
-class Projectile:
+
+class Explosion:
+    def __init__(self, x, y, owner, dmg, explosion_radius, ubw, explode):
+        self.x, self.y = x, y
+        self.owner = owner
+        self.dmg = dmg
+        self.timer = 10  # How many frames the explosion lasts
+        self.max_radius = 50
+        self.particles = []
+        self.explosion_radius = explosion_radius
+        self.ubw = ubw
+        self.explosion = explode
+        
+        for _ in range(8):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(1, 4)
+            vx = math.cos(angle) * speed
+            vy = math.sin(angle) * speed
+            self.particles.append({'x': self.x, 'y': self.y, 'vx': vx, 'vy': vy, 'life': 15})
+
+    def draw(self, screen):
+        # Calculate radius based on timer for an expanding/fading effect
+        radius = self.max_radius * (1 - (self.timer / 10))
+        pygame.draw.circle(screen, (255, 165, 0), (int(self.x), int(self.y)), int(radius)) # Orange
+        pygame.draw.circle(screen, (255, 255, 255), (int(self.x), int(self.y)), int(radius // 2)) # White core
+        
+        # Update and draw particles
+        for p in self.particles[:]:
+            p['x'] += p['vx']
+            p['y'] += p['vy']
+            p['life'] -= 1
+            if p['life'] <= 0:
+                self.particles.remove(p)
+            else:
+                size = max(1, p['life'] // 3)
+                pygame.draw.circle(screen, (255, 100, 0), (int(p['x']), int(p['y'])), size)
+        
+        self.timer -= 1
+
+
+class Kamehameha:
     def __init__(self, x, y, angle, dmg, pierce, size, seeking, returns):
         self.x, self.y = x, y
         self.dmg = dmg
@@ -50,10 +91,6 @@ class Projectile:
         pygame.draw.circle(screen, (173, 216, 230), (int(self.x), int(self.y)), self.size)
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x), int(self.y)), self.size // 2)
 
-
-# ==========================================
-# 1. BASE CLASS (Must be defined first)
-# ==========================================
 class Tower:
     """The base class that all towers will inherit from."""
 
@@ -61,14 +98,110 @@ class Tower:
         self.x = x
         self.y = y
         self.damage_dealt = 0  # Now every tower automatically gets a damage counter!
+        self.target_mode = "first"
 
 
-# ==========================================
-# 2. CHILD CLASS
-# ==========================================
+class Archer(Tower):
+    def __init__(self, tower_id, x, y):
+        super().__init__(x, y)
+        self.id = tower_id
+        self.tower_type = "archer"
+        self.cost = 600
+        self.path_left = 0
+        self.path_right = 0
+
+        # Base Stats
+        self.base_dmg = 5
+        self.base_speed = 1000  # Archer shoots faster than Goku
+        self.base_range = 1000
+
+        self.angle = 270
+        self.last_shot_time = 0
+        self.charging = False
+        self.charge_target = None
+        self.charge_start = 0
+        self.ubw_cooldown = 0
+
+        self.left_costs = [200, 450, 1200]
+        self.right_costs = [150, 400, 1000]
+        self.left_names = ["Stronger", "Powerful", "UBW"]
+        self.right_names = ["Faster", "Bigger", "EXPLOSION"]
+
+        self.idle_img = pygame.image.load(r"Images\archer_idle.png").convert_alpha()
+        self.shoot_img = pygame.image.load(r"Images\archer_shoot.png").convert_alpha()
+
+    def upgrade_left(self, game_data):
+        if self.path_left == 2 and self.path_right == 3:
+            return False
+        if self.path_left < 3 and game_data.current_cash >= self.left_costs[self.path_left]:
+            game_data.current_cash -= self.left_costs[self.path_left]
+            self.path_left += 1
+            return True
+        return False
+
+    def upgrade_right(self, game_data):
+        if self.path_left == 3 and self.path_right == 2:
+            return False
+        if self.path_right < 3 and game_data.current_cash >= self.right_costs[self.path_right]:
+            game_data.current_cash -= self.right_costs[self.path_right]
+            self.path_right += 1
+            return True
+        return False
+
+    def get_stats(self):
+        dmg = self.base_dmg + (5 if self.path_left >= 1 else 0) + (10 if self.path_left >= 2 else 0)
+        speed = self.base_speed - (200 if self.path_left >= 1 else 0)
+        range_ = self.base_range
+        exp_radius = 0
+        ubw = True if self.path_left == 3 else False
+        explode = True if self.path_right == 3 else False
+        return dmg, speed, range_, exp_radius, ubw, explode
+
+    @property
+    def range(self):
+        _, _, range_, _, _, _ = self.get_stats()
+        return range_
+
+    def can_shoot(self):
+        _, speed, _, _, _, _ = self.get_stats()
+        return pygame.time.get_ticks() - self.last_shot_time > speed
+
+    def shoot(self, target):
+        """Explosion Shooting Logic"""
+        self.last_shot_time = pygame.time.get_ticks()
+
+        # Calculate angle for rotation
+        dx = target.x - self.x
+        dy = target.y - self.y
+        self.angle = math.degrees(math.atan2(-dy, dx))
+
+        dmg, _, _, exp_radius, ubw, explode = self.get_stats()
+        
+        if explode:
+            # Create multiple explosions around the target
+            explosions = []
+            num_explosions = 5
+            for i in range(num_explosions):
+                angle = i * (360 / num_explosions)
+                rad = math.radians(angle)
+                ex = target.x + math.cos(rad) * 50  # Spread around target
+                ey = target.y + math.sin(rad) * 50
+                explosions.append(Explosion(ex, ey, self, dmg, exp_radius, ubw, explode))
+            return explosions
+        else:
+            return [Explosion(target.x, target.y, self, dmg, exp_radius, ubw, explode)]
+
+    def draw(self, screen, my_id):
+        if self.charging:
+            img = self.shoot_img
+        else:
+            img = self.shoot_img if pygame.time.get_ticks() - self.last_shot_time < 150 else self.idle_img
+        rotated_img = pygame.transform.rotate(img, self.angle + 90)
+        rect = rotated_img.get_rect(center=(self.x, self.y))
+        screen.blit(rotated_img, rect)
+
 class Goku(Tower):
     def __init__(self, tower_id, x, y):
-        # Run the base Tower setup first to inherit x, y, and damage_dealt
         super().__init__(x, y)
 
         self.id = tower_id
@@ -91,16 +224,14 @@ class Goku(Tower):
 
         self.left_costs = [200, 450, 1200]
         self.right_costs = [150, 400, 1000]
+        self.left_names = ["sonic", "gigantic", "boomerang"]
+        self.right_names = ["piercing", "powerful", "seeking"]
 
         # Sprite Loading
-        try:
-            self.idle_img = pygame.image.load(r"Images\goku_idle.png").convert_alpha()
-            self.shoot_img = pygame.image.load(r"Images\goku_shoot.png").convert_alpha()
-        except:
-            # Error fallback
-            self.idle_img = pygame.Surface((60, 60))
-            self.idle_img.fill((255, 0, 255))
-            self.shoot_img = self.idle_img
+        self.idle_img = pygame.image.load(r"Images\goku_idle.png").convert_alpha()
+        self.shoot_img = pygame.image.load(r"Images\goku_shoot.png").convert_alpha()
+
+
 
     def upgrade_left(self, game_data):
         if self.path_left == 2 and self.path_right == 3:
@@ -147,7 +278,7 @@ class Goku(Tower):
         dy = target.y - self.y
         self.angle = math.degrees(math.atan2(-dy, dx))
 
-        return Projectile(self.x, self.y, self.angle, dmg, pierce, size, seeking, returns)
+        return Kamehameha(self.x, self.y, self.angle, dmg, pierce, size, seeking, returns)
 
     def draw(self, screen, my_id):
         img = self.shoot_img if pygame.time.get_ticks() - self.last_shot_time < 200 else self.idle_img
@@ -156,13 +287,13 @@ class Goku(Tower):
         screen.blit(rotated_img, rect)
 
 
-# ==========================================
-# 3. MANAGER CLASS
-# ==========================================
 class TowerManager:
     """Helper class to handle spawning towers."""
-
+    def __init__(self):
+        pass
     def create_tower(self, tower_type, x, y):
         if tower_type == "goku":
             return Goku(0, x, y)
+        elif tower_type == "archer":
+            return Archer(0, x, y)
         return None

@@ -7,10 +7,10 @@ class Data:
             # Initialize variables ONLY once
             cls._instance.starting_hp = 150
             cls._instance.current_hp = cls._instance.starting_hp
-            cls._instance.starting_cash = 650
+            cls._instance.starting_cash = 3500
             cls._instance.current_cash = cls._instance.starting_cash
             cls._instance.path_points = [
-                (0,168), (513,418), (611,184), (1358,350), (709,425), (700, 586), (758, 1080)
+                (0,300), (150,300), (150,700),(700,800), (700,250), (1000,250),(1000,1080)
             ]
         return cls._instance
 

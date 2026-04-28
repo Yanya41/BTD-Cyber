@@ -7,7 +7,6 @@ screen = pygame.display.set_mode((1920, 1080))
 
 #folders
 image_folder = "Images"
-background_filename = "map1.png"
 
 skeleton_name_prefix = "skeleton_frame" #the name for the frames is skeleton_frame_(frame number).png
 shielded_skeleton_name_prefix = "shielded_skeleton_frame" #the name for the frames is shielded_skeleton_frame_(frame number).png
@@ -68,11 +67,6 @@ def load_image(filename, scale_to=None, alpha=False):
         return None
 
 
-#loading the assets
-background_image = load_image(background_filename, scale_to=(1920, 1080))
-if background_image is None:
-    background_image = pygame.Surface((1920, 1080))
-    background_image.fill((34, 139, 34))  # Fallback: Dark Green
 
 #loading the skeleton and shielded skeleton frames for animation
 skeleton_frames = []

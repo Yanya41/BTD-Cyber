@@ -1,20 +1,25 @@
 from load_assets import load_image, screen
-import pygame, math
-from game_data import Data
+import math
 from rounds import Round
 from towers import TowerManager
+from game_data import Data
 
 MineFont = r'Images\MineFont.ttf'
 goku_icon_path = r"Cards\goku.png"
 goku_idle_path = r"goku_idle.png"
 goku_shoot_path = r"goku_shoot.png"
 
+archer_icon_path = r"Cards\wizard.png"
+archer_idle_path = r"archer_idle.png"
+archer_shoot_path = r"archer_shoot.png"
+ubw_icon_path = r"unlimited_blade_works.png"
+
 # the map
 import pygame
 import random
 
 
-class Map_Background:
+class MapBackground:
     def __init__(self):
         # We grab the path directly from your Data class logic
         from game_data import Data
@@ -71,70 +76,114 @@ class Map_Background:
             for pt in self.path_points:
                 pygame.draw.circle(self.bg_surface, color, pt, width // 2)
 
-    def draw(self, screen):
+    def draw(self):
         # Instead of doing all that math every frame, just paste the finished picture!
         screen.blit(self.bg_surface, (0, 0))
 
 
 
+class Abilities:
+    def __init__(self, font, towers):
+        self.font = font
+        self.tower = towers
+        self.ubw_icon = load_image(ubw_icon_path, alpha=True)
+        self.btw_ubw = pygame.Rect(1750, 150, 120, 50)  # UBW ultimate button
+    def draw(self):
+        screen.blit(self.ubw_icon, (10, 1000))
 
-class Upgrade_Panel: #this is the upgrade panel that is in the bottom left
+
+class UpgradePanel: #this is the upgrade panel that is in the bottom left
     def __init__(self, font):
         self.font = font
-        self.rect = pygame.Rect(0, 880, 400, 200)  # Bottom left corner panel
-        self.color = (50, 50, 50)
+        self.panel_upgrade = pygame.Rect(1520, 0, 400, 200)  # Bottom left corner panel
+        self.gray = (50, 50, 50)
+        self.red = (200, 100, 100)
 
-        # Buttons relative to the panel
-        self.btn_left = pygame.Rect(20, 920, 150, 50)
-        self.btn_right = pygame.Rect(200, 920, 150, 50)
+        self.btn_left = pygame.Rect(1540, 10, 150, 50) # the left upgrade button path
+        self.btn_right = pygame.Rect(1750, 10, 150, 50)# the right upgrade button path
+        self.btn_target = pygame.Rect(1750, 100, 120, 50)# the targeting mode button
 
-    def draw(self, screen, tower):
+    def draw(self, tower):
         if not tower:
             return  # Don't draw anything if no tower is selected
 
-        pygame.draw.rect(screen, self.color, self.rect)
+        pygame.draw.rect(screen, self.gray, self.panel_upgrade) # Draw the upgrade panel background
 
-        # Title
+        # Title aka "Goku Upgrades" or "Archer Upgrades" etc...
         title = self.font.render(f"{tower.tower_type.upper()} Upgrades", True, (255, 255, 255))
-        screen.blit(title, (120, 890))
+        screen.blit(title, (1630, 170))
 
-        dmg_text = self.font.render(f"Damage: {getattr(tower, 'damage_dealt')}", True, (200, 200, 200))
-        screen.blit(dmg_text, (150, 980))  # Placed bottom center of the panel
+        # Damage Dealt
+        dmg_text = self.font.render(f"Damage: {getattr(tower, 'damage_dealt')}", True, (255, 255, 255))
+        screen.blit(dmg_text, (1550, 100))  # Placed bottom center of the panel
 
         # Left Path Button
-        pygame.draw.rect(screen, (0, 100, 200), self.btn_left)
-        if tower.path_left < 3:
-            cost_L = tower.left_costs[tower.path_left]
-            text_L = self.font.render(f"Left: ${cost_L}", True, (255, 255, 255))
+        pygame.draw.rect(screen, (50, 100, 200), self.btn_left)
+        if (tower.path_left < 3 and tower.path_right < 3) or (tower.path_left < 2 and tower.path_right == 3):
+            cost_l = tower.left_costs[tower.path_left]
+            text_l = self.font.render(f"Left: ${cost_l}", True, (255, 255, 255))
+            name_l = tower.left_names[tower.path_left]
+            name_text_l = self.font.render(name_l, True, (255, 255, 255))
+            screen.blit(name_text_l, (self.btn_left.x + 10, self.btn_left.y + 30))
+            screen.blit(text_l, (self.btn_left.x + 10, self.btn_left.y + 10))
+
+        elif tower.path_right == 3 and tower.path_left == 2:
+            text_l = self.font.render("LOCKED", True, self.red)
+            screen.blit(text_l, (self.btn_left.x + 10, self.btn_left.y + 10))
+
         else:
-            text_L = self.font.render("MAXED", True, (200, 0, 0))
-        screen.blit(text_L, (self.btn_left.x + 10, self.btn_left.y + 10))
+            text_l = self.font.render("MAXED", True, self.red)
+            screen.blit(text_l, (self.btn_left.x + 10, self.btn_left.y + 10))
 
         # Right Path Button
-        pygame.draw.rect(screen, (200, 100, 0), self.btn_right)
-        if tower.path_right < 3:
-            cost_R = tower.right_costs[tower.path_right]
-            text_R = self.font.render(f"Right: ${cost_R}", True, (255, 255, 255))
+        pygame.draw.rect(screen, (50, 100, 200), self.btn_right)
+        if (tower.path_right < 3 and tower.path_left < 3) or (tower.path_right < 2 and tower.path_left == 3):
+            cost_r = tower.right_costs[tower.path_right]
+            text_r = self.font.render(f"Right: ${cost_r}", True, (255, 255, 255))
+            name_r = tower.right_names[tower.path_right]
+            name_text_r = self.font.render(name_r, True, (255, 255, 255))
+            screen.blit(name_text_r, (self.btn_right.x + 10, self.btn_right.y + 30))
+
+        elif tower.path_left == 3 and tower.path_right == 2:
+            text_r = self.font.render("LOCKED", True, self.red)
+            screen.blit(text_r, (self.btn_right.x + 10, self.btn_right.y + 10))
+
         else:
-            text_R = self.font.render("MAXED", True, (200, 0, 0))
-        screen.blit(text_R, (self.btn_right.x + 10, self.btn_right.y + 10))
+            text_r = self.font.render("MAXED", True, self.red)
+        screen.blit(text_r, (self.btn_right.x + 10, self.btn_right.y + 10))
+
+        # Targeting Mode Button
+        target_mode_text = "Target: " + tower.target_mode.capitalize()
+        text_t = self.font.render(target_mode_text, True, (255, 0, 0))
+        screen.blit(text_t, (self.btn_target.x, self.btn_target.y))
+
+        # UBW Ultimate Button (Newly Added)
+        if tower.path_left == 3:
+            color = (200, 50, 50) if tower.ubw_cooldown == 0 else (100, 100, 100)
+            pygame.draw.rect(screen, color, self.btn_ubw)
+            if tower.ubw_cooldown > 0:
+                text_ubw = self.font.render(f"UBW CD: {int(tower.ubw_cooldown / 1000)}s", True, (255, 255, 255))
+            else:
+                text_ubw = self.font.render("UBW Ultimate", True, (255, 255, 255))
+            screen.blit(text_ubw, (self.btn_ubw.x + 5, self.btn_ubw.y + 15))
 
 
-class Side_Menu: #this is the right side menu where you can purchase towers
+class SideMenu: #this is the right side menu where you can purchase towers
     def __init__(self, width):
         self.width = width
         self.rect = pygame.Rect(1920 - width, 0, width, 1080)
         self.color = (200, 200, 200)
 
-    def draw(self, screen):
+    def draw(self):
         pygame.draw.rect(screen, self.color, self.rect)
         # Fix: Ensure path matches your folder structure
         goku_icon = load_image(goku_icon_path, scale_to=(100, 100), alpha=True)
-        if goku_icon:
-            screen.blit(goku_icon, (1920 - self.width + 100, 200))
+        archer_icon = load_image(archer_icon_path, scale_to=(100, 100), alpha=True)
+        screen.blit(goku_icon, (1920 - self.width + 100, 200))
+        screen.blit(archer_icon, (1920 - self.width + 100, 350))
 
 
-class UI_Manager:
+class UiManager:
     def __init__(self, font):
         self.font = font
         self.buttons = []  # List to hold button data (rect, color, text)
@@ -143,7 +192,7 @@ class UI_Manager:
         self.buttons.append((pygame.Rect(350, 50, 200, 50), (34, 139, 34), str(Data().starting_cash) + " Cash", (239, 191, 4)))  # cash
         self.buttons.append((pygame.Rect(600, 50, 200, 50), (34, 139, 34), "Round " + str(Round().current_round), (0, 0, 0)))  # round number
 
-    def draw(self, screen, data, rounds):
+    def draw(self, data, rounds):
         for button in self.buttons:
             pygame.draw.rect(screen, button[1], button[0])
             label = button[2]
@@ -159,20 +208,73 @@ class UI_Manager:
             screen.blit(text_surface, text_rect)
 
 
+def is_on_path(px, py, path_points, minimum_distance):
+    """
+    Checks if a point (px, py) is within 'minimum_distance' of any line segment in path_points.
+    """
+    for i in range(len(path_points) - 1):
+        x1, y1 = path_points[i]
+        x2, y2 = path_points[i + 1]
+
+        # Calculate the distance from the point to the line segment
+        line_len_sq = (x2 - x1) ** 2 + (y2 - y1) ** 2
+        if line_len_sq == 0:
+            dist = math.hypot(px - x1, py - y1)
+        else:
+            # Find the closest point on the line segment
+            t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / line_len_sq
+            t = max(0, min(1, t))  # Clamp t to the 0 to 1 range
+
+            proj_x = x1 + t * (x2 - x1)
+            proj_y = y1 + t * (y2 - y1)
+
+            dist = math.hypot(px - proj_x, py - proj_y)
+
+        if dist < minimum_distance:
+            return True  # It's too close to the path!
+
+    return False
+
+
+def is_overlapping_tower(px, py, placed_towers, min_distance):
+    """
+    Checks if a point (px, py) is within 'min_distance' of any already placed tower.
+    """
+    for t in placed_towers:
+        # Calculate the distance between the mouse and the center of the existing tower
+        dist = math.hypot(px - t.x, py - t.y)
+
+        if dist < min_distance:
+            return True  # It's too close to another tower!
+
+    return False
+
+def get_tower (tower_type):
+    if tower_type == "goku":
+        return goku_idle_path, 250
+    if tower_type == "archer":
+        return archer_idle_path, 1000
+
+
+
+
 # execution starts here
 pygame.init()
 clock = pygame.time.Clock()
 
 game_data = Data()
 
-draw_map = Map_Background()
-side_menu = Side_Menu(300)
-ui = UI_Manager(pygame.font.Font(MineFont, 25))
-upgrade_panel = Upgrade_Panel(pygame.font.Font(MineFont, 20))
+draw_map = MapBackground()
+side_menu = SideMenu(400)
+ui = UiManager(pygame.font.Font(MineFont, 25))
+upgrade_panel = UpgradePanel(pygame.font.Font(MineFont, 20))
 round_manager = Round()
 tower_manager = TowerManager()
 placed_towers, projectiles = [], []
 dragging_tower, selected_tower = None, None
+abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
+
+explosions = []
 
 # Main Game Loop
 running = True
@@ -184,11 +286,13 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN: #handle all mouse button presses here
             mx, my = m_pos
             # upgrade panel
-            if selected_tower and upgrade_panel.rect.collidepoint(mx, my):
+            if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
                 if upgrade_panel.btn_left.collidepoint(mx, my):
                     selected_tower.upgrade_left(game_data)
                 elif upgrade_panel.btn_right.collidepoint(mx, my):
                     selected_tower.upgrade_right(game_data)
+                elif upgrade_panel.btn_target.collidepoint(mx, my):
+                    selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
 
             # start round button
             elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
@@ -199,16 +303,23 @@ while running:
                 if game_data.current_cash >= 550:
                     dragging_tower = "goku"
 
+            elif 1620 <= mx <= 1920 and 350 <= my <= 450:
+                if game_data.current_cash >= 350:
+                    dragging_tower = "archer"
+
             #deselect tower if clicking on something else
             else:
                 selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40), None)
 
         if event.type == pygame.MOUSEBUTTONUP:
             if dragging_tower and m_pos[0] < 1620:
-                new_t = tower_manager.create_tower(dragging_tower, m_pos[0], m_pos[1])
-                placed_towers.append(new_t)
-                game_data.current_cash -= 550
-            dragging_tower = None
+                if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0], m_pos[1], placed_towers, 50):
+                    new_t = tower_manager.create_tower(dragging_tower, m_pos[0], m_pos[1])
+                    placed_towers.append(new_t)
+                    game_data.current_cash -= new_t.cost
+                dragging_tower = None
+            elif dragging_tower and m_pos[0] > 1620:
+                dragging_tower = None
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
@@ -224,13 +335,48 @@ while running:
 
     # towers shooting
     for t in placed_towers:
-        if t.can_shoot():
-            for e in round_manager.enemies:
-                if math.hypot(e.x - t.x, e.y - t.y) <= t.range:
-                    new_projectile = t.shoot(e)
-                    new_projectile.owner = t  # Track which tower shot this projectile
-                    projectiles.append(new_projectile)
-                    break
+        if t.tower_type == "archer":
+            if t.charging:
+                if t.charge_target.hp <= 0 or math.hypot(t.charge_target.x - t.x, t.charge_target.y - t.y) > t.range:
+                    t.charging = False  # Cancel charge if target dies or moves out of range
+                elif pygame.time.get_ticks() - t.charge_start > 3000:
+                    # shoot explosion
+                    result = t.shoot(t.charge_target)
+                    explosions.extend(result)
+                    t.charging = False
+                    t.last_shot_time = pygame.time.get_ticks()
+                else:
+                    # Update angle to follow the target
+                    dx = t.charge_target.x - t.x
+                    dy = t.charge_target.y - t.y
+                    t.angle = math.degrees(math.atan2(-dy, dx))
+            else:
+                # check if he can shoot and start charging
+                if t.can_shoot():
+                    if t.target_mode == "strong":
+                        target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.hp, default=None)
+                    else:
+                        target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.target_index, default=None)
+                    if target:
+                        t.charging = True
+                        t.charge_target = target
+                        t.charge_start = pygame.time.get_ticks()
+                        # set initial angle
+                        dx = target.x - t.x
+                        dy = target.y - t.y
+                        t.angle = math.degrees(math.atan2(-dy, dx))
+        else:
+            # goku shooting
+            if t.can_shoot():
+                if t.target_mode == "strong":
+                    target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.hp, default=None)
+                else:
+                    target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.target_index, default=None)
+                if target:
+                    result = t.shoot(target)
+                    if t.tower_type == "goku":
+                        result.owner = t
+                        projectiles.append(result)
 
     # projectile damage & collision
     for p in projectiles[:]:
@@ -257,41 +403,73 @@ while running:
         if p.x < -50 or p.x > 1970 or p.y < -50 or p.y > 1130:
             if p in projectiles: projectiles.remove(p)
 
-        # Remove dead enemies and trigger death spawns
-        surviving_enemies = []
-        for e in round_manager.enemies:
-            if e.hp > 0:
-                surviving_enemies.append(e)
-            else:
-                # Enemy died! Give the player cash
-                game_data.current_cash += getattr(e, 'cash_price', 1)
+    # Remove dead enemies and trigger death spawns
+    surviving_enemies = []
+    for e in round_manager.enemies:
+        if e.hp > 0:
+            surviving_enemies.append(e)
+        else:
+            # Enemy died! Give the player cash
+            game_data.current_cash += getattr(e, 'cash_price', 1)
 
-                # Check if this enemy drops things when it dies (like the Barrel)
-                if hasattr(e, 'on_death'):
-                    new_skeletons = e.on_death()
-                    surviving_enemies.extend(new_skeletons)
+            # Check if this enemy drops things when it dies (like the Barrel)
+            if hasattr(e, 'on_death'):
+                new_skeletons = e.on_death()
+                surviving_enemies.extend(new_skeletons)
 
-        # Update the official enemy list
-        round_manager.enemies = surviving_enemies
+    # Update the official enemy list
+    round_manager.enemies = surviving_enemies
 
     # drawing section
-    draw_map.draw(screen)
+    draw_map.draw()
     for e in round_manager.enemies: e.draw(screen)
     for p in projectiles: p.draw(screen)
+    # Draw explosions
+    for ex in explosions[:]:
+        ex.draw(screen)
+        if ex.timer == 5:  # At the peak of the explosion, damage enemies in area
+            for e in round_manager.enemies:
+                if math.hypot(e.x - ex.x, e.y - ex.y) < 50:  # Within 50 pixels of explosion center
+                    damage = ex.dmg  # Use the explosion's damage value
+                    actual_damage = min(damage, e.hp)
+                    e.hp -= actual_damage
+                    ex.owner.damage_dealt += actual_damage  # Update the tower's damage counter
+        if ex.timer <= 0:
+            explosions.remove(ex)
     for t in placed_towers: t.draw(screen, 1)
 
-    side_menu.draw(screen)
-    ui.draw(screen, game_data, round_manager)
+    side_menu.draw()
+    ui.draw(game_data, round_manager)
     if selected_tower:
         pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range,2)  # Show range
-        upgrade_panel.draw(screen, selected_tower)
+        range_surface_0 = pygame.Surface((selected_tower.range*2, selected_tower.range*2), pygame.SRCALPHA)
+        pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range), selected_tower.range)
+        screen.blit(range_surface_0, (selected_tower.x - selected_tower.range, selected_tower.y - selected_tower.range))
+        upgrade_panel.draw(selected_tower)
 
     if dragging_tower:
-        icon = load_image(goku_idle_path, scale_to=(60, 60), alpha=True)
-        pygame.draw.circle(screen, (255, 0, 255), (m_pos[0], m_pos[1]), 250,2)  # Show range
-        if icon: screen.blit(icon, (m_pos[0] - 30, m_pos[1] - 30))
+        radius = get_tower(dragging_tower)[1]
+        range_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
+        if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0], m_pos[1], placed_towers, 50):
+            pygame.draw.circle(range_surface, (0, 0, 255, 100), (radius, radius), radius)
+        else:
+            pygame.draw.circle(range_surface, (255, 0, 0, 100), (radius, radius), radius)
+
+        pygame.draw.circle(range_surface, (255, 0, 255, 255), (radius, radius), radius, 2)
+        screen.blit(range_surface, (m_pos[0] - radius, m_pos[1] - radius))
+
+        icon = load_image(get_tower(dragging_tower)[0], alpha=True)
+        if icon:
+            rect = icon.get_rect(center=m_pos)
+            screen.blit(icon, rect)
+    abilities.draw()
 
     pygame.display.flip()
     clock.tick(60)
+
+    # Update cooldowns
+    for t in placed_towers:
+        if hasattr(t, 'ubw_cooldown'):
+            t.ubw_cooldown = max(0, t.ubw_cooldown - 16)
 
 pygame.quit()
