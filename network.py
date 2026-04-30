@@ -30,3 +30,24 @@ class Network:
             return pickle.loads(self.client.recv(4096))
         except socket.error as e:
             print(f"Socket Error: {e}")
+
+    def send_action(self, action_data):
+        """
+        Sends an action to the server and receives the updated game state.
+        action_data: dict like {"type": "place_tower", "tower_data": {...}}
+        """
+        try:
+            self.client.send(pickle.dumps(action_data))
+            return pickle.loads(self.client.recv(4096))
+        except socket.error as e:
+            print(f"Socket Error: {e}")
+
+    def get_state(self):
+        """
+        Requests the current game state from the server.
+        """
+        try:
+            self.client.send(pickle.dumps({"type": "get_state"}))
+            return pickle.loads(self.client.recv(4096))
+        except socket.error as e:
+            print(f"Socket Error: {e}")

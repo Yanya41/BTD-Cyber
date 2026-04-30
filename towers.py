@@ -42,6 +42,20 @@ class Explosion:
         
         self.timer -= 1
 
+    def to_dict(self):
+        return {
+            'x': self.x,
+            'y': self.y,
+            'owner_id': self.owner.id if self.owner else None,
+            'dmg': self.dmg,
+            'timer': self.timer,
+            'max_radius': self.max_radius,
+            'particles': self.particles,
+            'explosion_radius': self.explosion_radius,
+            'ubw': self.ubw,
+            'explosion': self.explosion
+        }
+
 
 class Kamehameha:
     def __init__(self, x, y, angle, dmg, pierce, size, seeking, returns):
@@ -91,6 +105,23 @@ class Kamehameha:
         pygame.draw.circle(screen, (173, 216, 230), (int(self.x), int(self.y)), self.size)
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x), int(self.y)), self.size // 2)
 
+    def to_dict(self):
+        return {
+            'x': self.x,
+            'y': self.y,
+            'dmg': self.dmg,
+            'pierce': self.pierce,
+            'size': self.size,
+            'seeking': self.seeking,
+            'returns': self.returns,
+            'speed': self.speed,
+            'hit_enemies': self.hit_enemies,
+            'has_returned': self.has_returned,
+            'vx': self.vx,
+            'vy': self.vy
+        }
+
+
 class Tower:
     """The base class that all towers will inherit from."""
 
@@ -120,7 +151,6 @@ class Archer(Tower):
         self.charging = False
         self.charge_target = None
         self.charge_start = 0
-        self.ubw_cooldown = 0
 
         self.left_costs = [200, 450, 1200]
         self.right_costs = [150, 400, 1000]
@@ -130,19 +160,25 @@ class Archer(Tower):
         self.idle_img = pygame.image.load(r"Images\archer_idle.png").convert_alpha()
         self.shoot_img = pygame.image.load(r"Images\archer_shoot.png").convert_alpha()
 
-    def upgrade_left(self, game_data):
+    def upgrade_left(self, game_data, placed_towers):
         if self.path_left == 2 and self.path_right == 3:
             return False
         if self.path_left < 3 and game_data.current_cash >= self.left_costs[self.path_left]:
+            if self.path_left == 2:  # upgrading to UBW
+                if any(t for t in placed_towers if t != self and t.tower_type == "archer" and t.path_left == 3):
+                    return False
             game_data.current_cash -= self.left_costs[self.path_left]
             self.path_left += 1
             return True
         return False
 
-    def upgrade_right(self, game_data):
+    def upgrade_right(self, game_data, placed_towers):
         if self.path_left == 3 and self.path_right == 2:
             return False
         if self.path_right < 3 and game_data.current_cash >= self.right_costs[self.path_right]:
+            if self.path_right == 2:  # upgrading to EXPLOSION
+                if any(t for t in placed_towers if t != self and t.tower_type == "archer" and t.path_right == 3):
+                    return False
             game_data.current_cash -= self.right_costs[self.path_right]
             self.path_right += 1
             return True
@@ -175,21 +211,9 @@ class Archer(Tower):
         dy = target.y - self.y
         self.angle = math.degrees(math.atan2(-dy, dx))
 
+        # Return an explosion at the target's location
         dmg, _, _, exp_radius, ubw, explode = self.get_stats()
-        
-        if explode:
-            # Create multiple explosions around the target
-            explosions = []
-            num_explosions = 5
-            for i in range(num_explosions):
-                angle = i * (360 / num_explosions)
-                rad = math.radians(angle)
-                ex = target.x + math.cos(rad) * 50  # Spread around target
-                ey = target.y + math.sin(rad) * 50
-                explosions.append(Explosion(ex, ey, self, dmg, exp_radius, ubw, explode))
-            return explosions
-        else:
-            return [Explosion(target.x, target.y, self, dmg, exp_radius, ubw, explode)]
+        return Explosion(target.x, target.y, self, dmg, exp_radius, ubw, explode)  # Pass self as the owner
 
     def draw(self, screen, my_id):
         if self.charging:
@@ -199,6 +223,32 @@ class Archer(Tower):
         rotated_img = pygame.transform.rotate(img, self.angle + 90)
         rect = rotated_img.get_rect(center=(self.x, self.y))
         screen.blit(rotated_img, rect)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tower_type': self.tower_type,
+            'x': self.x,
+            'y': self.y,
+            'damage_dealt': self.damage_dealt,
+            'target_mode': self.target_mode,
+            'cost': self.cost,
+            'path_left': self.path_left,
+            'path_right': self.path_right,
+            'base_dmg': self.base_dmg,
+            'base_speed': self.base_speed,
+            'base_range': self.base_range,
+            'angle': self.angle,
+            'last_shot_time': self.last_shot_time,
+            'charging': self.charging,
+            'charge_target_id': self.charge_target.id if self.charge_target else None,
+            'charge_start': self.charge_start,
+            'left_costs': self.left_costs,
+            'right_costs': self.right_costs,
+            'left_names': self.left_names,
+            'right_names': self.right_names
+        }
+
 
 class Goku(Tower):
     def __init__(self, tower_id, x, y):
@@ -233,19 +283,25 @@ class Goku(Tower):
 
 
 
-    def upgrade_left(self, game_data):
+    def upgrade_left(self, game_data, placed_towers):
         if self.path_left == 2 and self.path_right == 3:
             return False
         if self.path_left < 3 and game_data.current_cash >= self.left_costs[self.path_left]:
+            if self.path_left == 2:  # upgrading to boomerang
+                if any(t for t in placed_towers if t != self and t.tower_type == "goku" and t.path_left == 3):
+                    return False
             game_data.current_cash -= self.left_costs[self.path_left]
             self.path_left += 1
             return True
         return False
 
-    def upgrade_right(self, game_data):
+    def upgrade_right(self, game_data, placed_towers):
         if self.path_left == 3 and self.path_right == 2:
             return False
         if self.path_right < 3 and game_data.current_cash >= self.right_costs[self.path_right]:
+            if self.path_right == 2:  # upgrading to seeking
+                if any(t for t in placed_towers if t != self and t.tower_type == "goku" and t.path_right == 3):
+                    return False
             game_data.current_cash -= self.right_costs[self.path_right]
             self.path_right += 1
             return True
@@ -285,6 +341,30 @@ class Goku(Tower):
         rotated_img = pygame.transform.rotate(img, self.angle + 90)
         rect = rotated_img.get_rect(center=(self.x, self.y))
         screen.blit(rotated_img, rect)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tower_type': self.tower_type,
+            'x': self.x,
+            'y': self.y,
+            'damage_dealt': self.damage_dealt,
+            'target_mode': self.target_mode,
+            'cost': self.cost,
+            'path_left': self.path_left,
+            'path_right': self.path_right,
+            'base_dmg': self.base_dmg,
+            'base_speed': self.base_speed,
+            'base_pierce': self.base_pierce,
+            'base_size': self.base_size,
+            'base_range': self.base_range,
+            'angle': self.angle,
+            'last_shot_time': self.last_shot_time,
+            'left_costs': self.left_costs,
+            'right_costs': self.right_costs,
+            'left_names': self.left_names,
+            'right_names': self.right_names
+        }
 
 
 class TowerManager:

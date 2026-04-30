@@ -1,8 +1,9 @@
 from load_assets import load_image, screen
 import math
 from rounds import Round
-from towers import TowerManager
+from towers import TowerManager, Explosion
 from game_data import Data
+from network import Network
 
 MineFont = r'Images\MineFont.ttf'
 goku_icon_path = r"Cards\goku.png"
@@ -87,9 +88,14 @@ class Abilities:
         self.font = font
         self.tower = towers
         self.ubw_icon = load_image(ubw_icon_path, alpha=True)
-        self.btw_ubw = pygame.Rect(1750, 150, 120, 50)  # UBW ultimate button
+        self.btn_ubw = None
+        self.ubw_cooldown = 0
     def draw(self):
-        screen.blit(self.ubw_icon, (10, 1000))
+        if any(t for t in self.tower if t.tower_type == "archer" and t.path_left == 3):
+            self.btn_ubw = screen.blit(self.ubw_icon, (10, 1000))
+        else:
+            self.btn_ubw = None
+
 
 
 class UpgradePanel: #this is the upgrade panel that is in the bottom left
@@ -103,7 +109,7 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         self.btn_right = pygame.Rect(1750, 10, 150, 50)# the right upgrade button path
         self.btn_target = pygame.Rect(1750, 100, 120, 50)# the targeting mode button
 
-    def draw(self, tower):
+    def draw(self, tower, placed_towers):
         if not tower:
             return  # Don't draw anything if no tower is selected
 
@@ -120,8 +126,11 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         # Left Path Button
         pygame.draw.rect(screen, (50, 100, 200), self.btn_left)
         if (tower.path_left < 3 and tower.path_right < 3) or (tower.path_left < 2 and tower.path_right == 3):
-            cost_l = tower.left_costs[tower.path_left]
-            text_l = self.font.render(f"Left: ${cost_l}", True, (255, 255, 255))
+            if tower.path_left == 2 and any(t for t in placed_towers if t != tower and t.tower_type == tower.tower_type and t.path_left == 3):
+                text_l = self.font.render("BOUGHT", True, self.red)
+            else:
+                cost_l = tower.left_costs[tower.path_left]
+                text_l = self.font.render(f"Left: ${cost_l}", True, (255, 255, 255))
             name_l = tower.left_names[tower.path_left]
             name_text_l = self.font.render(name_l, True, (255, 255, 255))
             screen.blit(name_text_l, (self.btn_left.x + 10, self.btn_left.y + 30))
@@ -138,8 +147,11 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         # Right Path Button
         pygame.draw.rect(screen, (50, 100, 200), self.btn_right)
         if (tower.path_right < 3 and tower.path_left < 3) or (tower.path_right < 2 and tower.path_left == 3):
-            cost_r = tower.right_costs[tower.path_right]
-            text_r = self.font.render(f"Right: ${cost_r}", True, (255, 255, 255))
+            if tower.path_right == 2 and any(t for t in placed_towers if t != tower and t.tower_type == tower.tower_type and t.path_right == 3):
+                text_r = self.font.render("BOUGHT", True, self.red)
+            else:
+                cost_r = tower.right_costs[tower.path_right]
+                text_r = self.font.render(f"Right: ${cost_r}", True, (255, 255, 255))
             name_r = tower.right_names[tower.path_right]
             name_text_r = self.font.render(name_r, True, (255, 255, 255))
             screen.blit(name_text_r, (self.btn_right.x + 10, self.btn_right.y + 30))
@@ -157,15 +169,6 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         text_t = self.font.render(target_mode_text, True, (255, 0, 0))
         screen.blit(text_t, (self.btn_target.x, self.btn_target.y))
 
-        # UBW Ultimate Button (Newly Added)
-        if tower.path_left == 3:
-            color = (200, 50, 50) if tower.ubw_cooldown == 0 else (100, 100, 100)
-            pygame.draw.rect(screen, color, self.btn_ubw)
-            if tower.ubw_cooldown > 0:
-                text_ubw = self.font.render(f"UBW CD: {int(tower.ubw_cooldown / 1000)}s", True, (255, 255, 255))
-            else:
-                text_ubw = self.font.render("UBW Ultimate", True, (255, 255, 255))
-            screen.blit(text_ubw, (self.btn_ubw.x + 5, self.btn_ubw.y + 15))
 
 
 class SideMenu: #this is the right side menu where you can purchase towers
@@ -288,9 +291,9 @@ while running:
             # upgrade panel
             if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
                 if upgrade_panel.btn_left.collidepoint(mx, my):
-                    selected_tower.upgrade_left(game_data)
+                    selected_tower.upgrade_left(game_data, placed_towers)
                 elif upgrade_panel.btn_right.collidepoint(mx, my):
-                    selected_tower.upgrade_right(game_data)
+                    selected_tower.upgrade_right(game_data, placed_towers)
                 elif upgrade_panel.btn_target.collidepoint(mx, my):
                     selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
 
@@ -306,6 +309,13 @@ while running:
             elif 1620 <= mx <= 1920 and 350 <= my <= 450:
                 if game_data.current_cash >= 350:
                     dragging_tower = "archer"
+
+            elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
+                if abilities.ubw_cooldown == 0:
+                    abilities.ubw_cooldown = 60 * 60  # 60 seconds at 60 fps
+                    ubw_owner = next((t for t in placed_towers if t.tower_type == "archer" and t.path_left == 3), None)
+                    for e in round_manager.enemies:
+                        explosions.append(Explosion(e.x, e.y, ubw_owner, 50, 1, True, False))
 
             #deselect tower if clicking on something else
             else:
@@ -341,8 +351,19 @@ while running:
                     t.charging = False  # Cancel charge if target dies or moves out of range
                 elif pygame.time.get_ticks() - t.charge_start > 3000:
                     # shoot explosion
-                    result = t.shoot(t.charge_target)
-                    explosions.extend(result)
+                    dmg, _, _, exp_radius, ubw, explode = t.get_stats()
+                    if explode:
+                        # Create multiple explosions around the target
+                        num_explosions = 5
+                        for i in range(num_explosions):
+                            angle = i * (360 / num_explosions)
+                            rad = math.radians(angle)
+                            ex = t.charge_target.x + math.cos(rad) * 50  # Spread around target
+                            ey = t.charge_target.y + math.sin(rad) * 50
+                            explosions.append(Explosion(ex, ey, t, dmg, exp_radius, ubw, explode))
+                    else:
+                        result = t.shoot(t.charge_target)
+                        explosions.append(result)
                     t.charging = False
                     t.last_shot_time = pygame.time.get_ticks()
                 else:
@@ -445,7 +466,7 @@ while running:
         range_surface_0 = pygame.Surface((selected_tower.range*2, selected_tower.range*2), pygame.SRCALPHA)
         pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range), selected_tower.range)
         screen.blit(range_surface_0, (selected_tower.x - selected_tower.range, selected_tower.y - selected_tower.range))
-        upgrade_panel.draw(selected_tower)
+        upgrade_panel.draw(selected_tower, placed_towers)
 
     if dragging_tower:
         radius = get_tower(dragging_tower)[1]
@@ -471,5 +492,7 @@ while running:
     for t in placed_towers:
         if hasattr(t, 'ubw_cooldown'):
             t.ubw_cooldown = max(0, t.ubw_cooldown - 16)
+
+    abilities.ubw_cooldown = max(0, abilities.ubw_cooldown - 1)
 
 pygame.quit()

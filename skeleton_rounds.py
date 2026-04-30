@@ -62,6 +62,22 @@ class Enemy:
         else:
             pygame.draw.circle(screen, (255, 0, 0), (int(self.x), int(self.y)), 12)
 
+    def to_dict(self):
+        return {
+            'x': self.x,
+            'y': self.y,
+            'speed': self.speed,
+            'target_index': self.target_index,
+            'current_frame': self.current_frame,
+            'frame_time': self.frame_time,
+            'last_update': self.last_update,
+            'flip_image': self.flip_image,
+            'width': self.width,
+            'height': self.height,
+            'id': self.id,
+            'type': self.__class__.__name__
+        }
+
 class Skeleton(Enemy):
     def __init__(self, speed=2, frame_time=(1000//60)):
         super().__init__(speed)
@@ -71,6 +87,15 @@ class Skeleton(Enemy):
         self.hp = 1
         self.cash_price = 1
 
+    def to_dict(self):
+        d = super().to_dict()
+        d.update({
+            'dmg': self.dmg,
+            'hp': self.hp,
+            'cash_price': self.cash_price
+        })
+        return d
+
 class ShieldedSkeleton(Enemy):
     def __init__(self, speed=1.5, frame_time=1000//60):
         super().__init__(speed)
@@ -79,6 +104,15 @@ class ShieldedSkeleton(Enemy):
         self.dmg = 2
         self.hp = 2
         self.cash_price = 2
+
+    def to_dict(self):
+        d = super().to_dict()
+        d.update({
+            'dmg': self.dmg,
+            'hp': self.hp,
+            'cash_price': self.cash_price
+        })
+        return d
 
 
 class SkeletonBarrel(Enemy):
@@ -152,3 +186,12 @@ class SkeletonBarrel(Enemy):
         # Jaw details (Tiny lines to make teeth)
         pygame.draw.line(screen, (100, 65, 35), (x - 1, y + 3), (x - 1, y + 7), 1)
         pygame.draw.line(screen, (100, 65, 35), (x + 1, y + 3), (x + 1, y + 7), 1)
+
+    def to_dict(self):
+        d = super().to_dict()
+        d.update({
+            'dmg': self.dmg,
+            'hp': self.hp,
+            'cash_price': self.cash_price
+        })
+        return d
