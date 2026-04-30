@@ -35,8 +35,8 @@ def check_files_exist():
     images_expected_count = 6
     cards_expected_count = 2
 
-    images_count = len(list_files_os(r"Images"))
-    cards_count = len(list_files_os(r"Images\Cards"))
+    images_count = len(list_files_os("Images"))
+    cards_count = len(list_files_os(os.path.join("Images", "Cards")))
 
     if images_count != images_expected_count or cards_count != cards_expected_count:
         print("ERROR: Missing asset files!")

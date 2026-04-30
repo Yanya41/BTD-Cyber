@@ -4,16 +4,17 @@ from rounds import Round
 from towers import TowerManager, Explosion
 from game_data import Data
 from network import Network
+import os
 
-MineFont = r'Images\MineFont.ttf'
-goku_icon_path = r"Cards\goku.png"
-goku_idle_path = r"goku_idle.png"
-goku_shoot_path = r"goku_shoot.png"
+MineFont = os.path.join('Images', 'MineFont.ttf')
+goku_icon_path = os.path.join("Cards", "goku.png")
+goku_idle_path = "goku_idle.png"
+goku_shoot_path = "goku_shoot.png"
 
-archer_icon_path = r"Cards\wizard.png"
-archer_idle_path = r"archer_idle.png"
-archer_shoot_path = r"archer_shoot.png"
-ubw_icon_path = r"unlimited_blade_works.png"
+archer_icon_path = os.path.join("Cards", "wizard.png")
+archer_idle_path = "archer_idle.png"
+archer_shoot_path = "archer_shoot.png"
+ubw_icon_path = "unlimited_blade_works.png"
 
 # the map
 import pygame

@@ -1,5 +1,7 @@
 import pygame
 import load_assets
+import os
+
 class MainMenu:
     def __init__(self, screen):
         self.screen = screen
@@ -17,12 +19,12 @@ class MainMenu:
         self.title_color = (255, 215, 0)  # gold-like
 
         # retro beep sounds
-        self.hover_sound = pygame.mixer.Sound(r"SoundEffects\hover_menu.wav")
-        self.click_sound = pygame.mixer.Sound(r"SoundEffects\click_menu.wav")
+        self.hover_sound = pygame.mixer.Sound(os.path.join("SoundEffects", "hover_menu.wav"))
+        self.click_sound = pygame.mixer.Sound(os.path.join("SoundEffects", "click_menu.wav"))
         self.last_hover = -1  # used to avoid repeating hover sounds
 
         #background picture
-        self.background = pygame.image.load(r"Images\background.jpg").convert()
+        self.background = pygame.image.load(os.path.join("Images", "background.jpg")).convert()
         self.background = pygame.transform.scale(self.background, (1920, 1080))
 
     def draw(self):

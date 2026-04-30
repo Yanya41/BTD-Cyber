@@ -1,6 +1,7 @@
 import pygame
 import math
 import random
+import os
 
 
 
@@ -157,8 +158,8 @@ class Archer(Tower):
         self.left_names = ["Stronger", "Powerful", "UBW"]
         self.right_names = ["Faster", "Bigger", "EXPLOSION"]
 
-        self.idle_img = pygame.image.load(r"Images\archer_idle.png").convert_alpha()
-        self.shoot_img = pygame.image.load(r"Images\archer_shoot.png").convert_alpha()
+        self.idle_img = pygame.image.load(os.path.join("Images", "archer_idle.png")).convert_alpha()
+        self.shoot_img = pygame.image.load(os.path.join("Images", "archer_shoot.png")).convert_alpha()
 
     def upgrade_left(self, game_data, placed_towers):
         if self.path_left == 2 and self.path_right == 3:
@@ -278,8 +279,8 @@ class Goku(Tower):
         self.right_names = ["piercing", "powerful", "seeking"]
 
         # Sprite Loading
-        self.idle_img = pygame.image.load(r"Images\goku_idle.png").convert_alpha()
-        self.shoot_img = pygame.image.load(r"Images\goku_shoot.png").convert_alpha()
+        self.idle_img = pygame.image.load(os.path.join("Images", "goku_idle.png")).convert_alpha()
+        self.shoot_img = pygame.image.load(os.path.join("Images", "goku_shoot.png")).convert_alpha()
 
 
 
