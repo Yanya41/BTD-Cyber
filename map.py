@@ -5,6 +5,7 @@ from towers import TowerManager, Explosion
 from game_data import Data
 from network import Network
 import os
+from skeleton_rounds import Skeleton
 
 MineFont = os.path.join('Images', 'MineFont.ttf')
 goku_icon_path = os.path.join("Cards", "goku.png")
@@ -274,6 +275,8 @@ ui = UiManager(pygame.font.Font(MineFont, 25))
 upgrade_panel = UpgradePanel(pygame.font.Font(MineFont, 20))
 round_manager = Round()
 tower_manager = TowerManager()
+network = Network()
+player_id = network.player_id
 placed_towers, projectiles = [], []
 dragging_tower, selected_tower = None, None
 abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
@@ -281,198 +284,211 @@ abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
 explosions = []
 
 # Main Game Loop
+# Main Game Loop
 running = True
 while running:
+    # ==========================================
+    # 1. NETWORK SYNC (The Server is Boss)
+    # ==========================================
+    current_game_state = network.get_state()
+
+    if current_game_state:
+        # Sync Game Stats
+        game_data.current_cash = current_game_state["cash"]
+        game_data.current_hp = current_game_state["current_hp"]
+        round_manager.current_round = current_game_state["current_round"]
+
+        # --- SYNC TOWERS ---
+        local_tower_ids = [t.id for t in placed_towers]
+        for server_tower in current_game_state["towers"]:
+            if server_tower["id"] not in local_tower_ids:
+                # We found a new tower from the server! Spawn it locally.
+                new_t = tower_manager.create_tower(server_tower["tower_type"], server_tower["x"], server_tower["y"])
+                new_t.id = server_tower["id"]
+                new_t.owner = server_tower.get("owner")  # <-- Save the owner!
+                placed_towers.append(new_t)
+            else:
+                # Update existing towers
+                for local_t in placed_towers:
+                    if local_t.id == server_tower["id"]:
+                        local_t.path_left = server_tower.get("path_left", 0)
+                        local_t.path_right = server_tower.get("path_right", 0)
+                        local_t.damage_dealt = server_tower.get("damage_dealt", 0)
+                        local_t.target_mode = server_tower.get("target_mode", "first")
+                        local_t.angle = server_tower.get("angle", 270)
+                        local_t.owner = server_tower.get("owner")  # <-- Keep owner updated!
+
+                        if server_tower.get("just_shot"):
+                            local_t.last_shot_time = pygame.time.get_ticks()
+
+        # --- SYNC ENEMIES ---
+        from skeleton_rounds import Skeleton
+
+        local_enemy_ids = [e.id for e in round_manager.enemies]
+        active_server_ids = [se["id"] for se in current_game_state["enemies"]]
+
+        # 1. Remove dead/leaked enemies from the local screen
+        round_manager.enemies = [e for e in round_manager.enemies if e.id in active_server_ids]
+
+        # 2. Add new enemies or update existing ones
+        for s_enemy in current_game_state["enemies"]:
+            if s_enemy["id"] not in local_enemy_ids:
+                visual_enemy = Skeleton()
+                visual_enemy.id = s_enemy["id"]
+                visual_enemy.x = s_enemy["x"]
+                visual_enemy.y = s_enemy["y"]
+                visual_enemy.hp = s_enemy["hp"]
+                round_manager.enemies.append(visual_enemy)
+            else:
+                for local_e in round_manager.enemies:
+                    if local_e.id == s_enemy["id"]:
+                        if s_enemy["x"] < local_e.x:
+                            local_e.flip_image = True
+                        elif s_enemy["x"] > local_e.x:
+                            local_e.flip_image = False
+
+                        local_e.x = s_enemy["x"]
+                        local_e.y = s_enemy["y"]
+                        local_e.hp = s_enemy["hp"]
+
+    # ==========================================
+    # 2. EVENT HANDLING (Player Inputs)
+    # ==========================================
     m_pos = pygame.mouse.get_pos()
     for event in pygame.event.get():
         if event.type == pygame.QUIT: running = False
 
-        if event.type == pygame.MOUSEBUTTONDOWN: #handle all mouse button presses here
+        if event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = m_pos
-            # upgrade panel
+
+            # Upgrade panel buttons
             if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
                 if upgrade_panel.btn_left.collidepoint(mx, my):
-                    selected_tower.upgrade_left(game_data, placed_towers)
+                    # If the upgrade succeeds locally (returns True)
+                    if selected_tower.upgrade_left(game_data, placed_towers):
+                        # Tell the server to save the new path level and our new cash balance!
+                        network.send({
+                            "type": "sync_upgrade",
+                            "tower_id": selected_tower.id,
+                            "path_left": selected_tower.path_left,
+                            "new_cash": game_data.current_cash
+                        })
+
                 elif upgrade_panel.btn_right.collidepoint(mx, my):
-                    selected_tower.upgrade_right(game_data, placed_towers)
+                    if selected_tower.upgrade_right(game_data, placed_towers):
+                        network.send({
+                            "type": "sync_upgrade",
+                            "tower_id": selected_tower.id,
+                            "path_right": selected_tower.path_right,
+                            "new_cash": game_data.current_cash
+                        })
+
                 elif upgrade_panel.btn_target.collidepoint(mx, my):
+                    # Toggle targeting locally
                     selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
+                    # Tell the server about the change
+                    network.send({
+                        "type": "sync_upgrade",
+                        "tower_id": selected_tower.id,
+                        "target_mode": selected_tower.target_mode
+                    })
 
-            # start round button
+            # Start round button
             elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
-                round_manager.start_next_round()
+                network.send({"type": "start_round"})
 
-            # the "shop"
+            # The "Shop"
             elif 1620 <= mx <= 1920 and 200 <= my <= 300:
-                if game_data.current_cash >= 550:
-                    dragging_tower = "goku"
+                if game_data.current_cash >= 550: dragging_tower = "goku"
 
             elif 1620 <= mx <= 1920 and 350 <= my <= 450:
-                if game_data.current_cash >= 350:
-                    dragging_tower = "archer"
+                if game_data.current_cash >= 600: dragging_tower = "archer"
 
+            # UBW Ability
             elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
-                if abilities.ubw_cooldown == 0:
-                    abilities.ubw_cooldown = 60 * 60  # 60 seconds at 60 fps
-                    ubw_owner = next((t for t in placed_towers if t.tower_type == "archer" and t.path_left == 3), None)
-                    for e in round_manager.enemies:
-                        explosions.append(Explosion(e.x, e.y, ubw_owner, 50, 1, True, False))
+                network.send({"type": "ubw"})  # Ask server to cast ability!
 
-            #deselect tower if clicking on something else
+                # Deselect tower
             else:
-                selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40), None)
+                # --- NEW: Only select towers that belong to YOU! ---
+                selected_tower = next((t for t in placed_towers if
+                                       getattr(t, 'owner', None) == player_id and math.hypot(mx - t.x, my - t.y) < 40),None)
 
         if event.type == pygame.MOUSEBUTTONUP:
             if dragging_tower and m_pos[0] < 1620:
-                if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0], m_pos[1], placed_towers, 50):
+                if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
+                                                                                                              m_pos[1],
+                                                                                                              placed_towers,
+                                                                                                              50):
                     new_t = tower_manager.create_tower(dragging_tower, m_pos[0], m_pos[1])
-                    placed_towers.append(new_t)
-                    game_data.current_cash -= new_t.cost
+                    network.send({
+                        "type": "place_tower",
+                        "tower_data": new_t.to_dict()
+                    })
                 dragging_tower = None
-            elif dragging_tower and m_pos[0] > 1620:
-                dragging_tower = None
+            elif dragging_tower and m_pos[0] >= 1620:
+                dragging_tower = None  # Cancel drag if dropped back in shop
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                round_manager.start_next_round()
-    # logic section
-    round_manager.update()
+                network.send({"type": "start_round"})
 
-    # Move Skeletons & Handle Leaks
-    for e in round_manager.enemies[:]:
-        if e.move(e.dmg):
-            round_manager.enemies.remove(e)
-            game_data.current_hp -= e.dmg  # Damage the player
-
-    # towers shooting
-    for t in placed_towers:
-        if t.tower_type == "archer":
-            if t.charging:
-                if t.charge_target.hp <= 0 or math.hypot(t.charge_target.x - t.x, t.charge_target.y - t.y) > t.range:
-                    t.charging = False  # Cancel charge if target dies or moves out of range
-                elif pygame.time.get_ticks() - t.charge_start > 3000:
-                    # shoot explosion
-                    dmg, _, _, exp_radius, ubw, explode = t.get_stats()
-                    if explode:
-                        # Create multiple explosions around the target
-                        num_explosions = 5
-                        for i in range(num_explosions):
-                            angle = i * (360 / num_explosions)
-                            rad = math.radians(angle)
-                            ex = t.charge_target.x + math.cos(rad) * 50  # Spread around target
-                            ey = t.charge_target.y + math.sin(rad) * 50
-                            explosions.append(Explosion(ex, ey, t, dmg, exp_radius, ubw, explode))
-                    else:
-                        result = t.shoot(t.charge_target)
-                        explosions.append(result)
-                    t.charging = False
-                    t.last_shot_time = pygame.time.get_ticks()
-                else:
-                    # Update angle to follow the target
-                    dx = t.charge_target.x - t.x
-                    dy = t.charge_target.y - t.y
-                    t.angle = math.degrees(math.atan2(-dy, dx))
-            else:
-                # check if he can shoot and start charging
-                if t.can_shoot():
-                    if t.target_mode == "strong":
-                        target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.hp, default=None)
-                    else:
-                        target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.target_index, default=None)
-                    if target:
-                        t.charging = True
-                        t.charge_target = target
-                        t.charge_start = pygame.time.get_ticks()
-                        # set initial angle
-                        dx = target.x - t.x
-                        dy = target.y - t.y
-                        t.angle = math.degrees(math.atan2(-dy, dx))
-        else:
-            # goku shooting
-            if t.can_shoot():
-                if t.target_mode == "strong":
-                    target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.hp, default=None)
-                else:
-                    target = max((e for e in round_manager.enemies if math.hypot(e.x - t.x, e.y - t.y) <= t.range), key=lambda e: e.target_index, default=None)
-                if target:
-                    result = t.shoot(target)
-                    if t.tower_type == "goku":
-                        result.owner = t
-                        projectiles.append(result)
-
-    # projectile damage & collision
-    for p in projectiles[:]:
-        p.move(round_manager.enemies)
-
-        for e in round_manager.enemies:
-            # Check if this projectile already hit this enemy
-            if id(e) not in p.hit_enemies:
-                # Increased collision distance to 45 for better reliability
-                if math.hypot(p.x - e.x, p.y - e.y) < 45:
-                    e.hp -= p.dmg
-                    if hasattr(p,'owner'):
-                        if e.hp < 0:
-                            p.owner.damage_dealt += (p.dmg + e.hp) # Track damage for the tower that shot this projectile
-                        else:
-                            p.owner.damage_dealt += p.dmg
-                    p.hit_enemies.append(id(e))
-                    p.pierce -= 1
-                    if p.pierce <= 0:
-                        if p in projectiles: projectiles.remove(p)
-                        break
-
-        # Remove off-screen orbs
-        if p.x < -50 or p.x > 1970 or p.y < -50 or p.y > 1130:
-            if p in projectiles: projectiles.remove(p)
-
-    # Remove dead enemies and trigger death spawns
-    surviving_enemies = []
-    for e in round_manager.enemies:
-        if e.hp > 0:
-            surviving_enemies.append(e)
-        else:
-            # Enemy died! Give the player cash
-            game_data.current_cash += getattr(e, 'cash_price', 1)
-
-            # Check if this enemy drops things when it dies (like the Barrel)
-            if hasattr(e, 'on_death'):
-                new_skeletons = e.on_death()
-                surviving_enemies.extend(new_skeletons)
-
-    # Update the official enemy list
-    round_manager.enemies = surviving_enemies
-
-    # drawing section
+    # ==========================================
+    # 3. DRAWING SECTION
+    # ==========================================
     draw_map.draw()
-    for e in round_manager.enemies: e.draw(screen)
-    for p in projectiles: p.draw(screen)
-    # Draw explosions
-    for ex in explosions[:]:
-        ex.draw(screen)
-        if ex.timer == 5:  # At the peak of the explosion, damage enemies in area
-            for e in round_manager.enemies:
-                if math.hypot(e.x - ex.x, e.y - ex.y) < 50:  # Within 50 pixels of explosion center
-                    damage = ex.dmg  # Use the explosion's damage value
-                    actual_damage = min(damage, e.hp)
-                    e.hp -= actual_damage
-                    ex.owner.damage_dealt += actual_damage  # Update the tower's damage counter
-        if ex.timer <= 0:
-            explosions.remove(ex)
-    for t in placed_towers: t.draw(screen, 1)
 
+    # Draw Enemies and animate them
+    now = pygame.time.get_ticks()
+    for e in round_manager.enemies:
+        if e.frames and (now - e.last_update > e.frame_time):
+            e.current_frame = (e.current_frame + 1) % len(e.frames)
+            e.last_update = now
+        e.draw(screen)
+
+    # Draw Towers
+    for t in placed_towers:
+        t.draw(screen, 1)
+
+    # Draw Server-Side Projectiles & Explosions
+    if current_game_state:
+        # Draw Kamehamehas
+        for p in current_game_state.get("projectiles", []):
+            size = p.get("size", 10)
+            pygame.draw.circle(screen, (173, 216, 230), (int(p["x"]), int(p["y"])), size)
+            pygame.draw.circle(screen, (255, 255, 255), (int(p["x"]), int(p["y"])), size // 2)
+
+        # Draw Explosions
+        for ex in current_game_state.get("explosions", []):
+            timer = ex.get("timer", 10)
+            max_radius = ex.get("max_radius", 50)
+            # Calculate radius based on timer for an expanding/fading effect
+            radius = max_radius * (1 - (timer / 10))
+            if radius > 0:
+                pygame.draw.circle(screen, (255, 165, 0), (int(ex["x"]), int(ex["y"])), int(radius))
+                pygame.draw.circle(screen, (255, 255, 255), (int(ex["x"]), int(ex["y"])), int(radius // 2))
+
+    # UI & Menus
     side_menu.draw()
     ui.draw(game_data, round_manager)
+    abilities.draw()
+
+    # Dragging and Selected Tower Overlays
     if selected_tower:
-        pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range,2)  # Show range
-        range_surface_0 = pygame.Surface((selected_tower.range*2, selected_tower.range*2), pygame.SRCALPHA)
-        pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range), selected_tower.range)
+        pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range, 2)
+        range_surface_0 = pygame.Surface((selected_tower.range * 2, selected_tower.range * 2), pygame.SRCALPHA)
+        pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range),
+                           selected_tower.range)
         screen.blit(range_surface_0, (selected_tower.x - selected_tower.range, selected_tower.y - selected_tower.range))
         upgrade_panel.draw(selected_tower, placed_towers)
 
     if dragging_tower:
         radius = get_tower(dragging_tower)[1]
-        range_surface = pygame.Surface((radius*2, radius*2), pygame.SRCALPHA)
-        if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0], m_pos[1], placed_towers, 50):
+        range_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+        if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
+                                                                                                      m_pos[1],
+                                                                                                      placed_towers,
+                                                                                                      50):
             pygame.draw.circle(range_surface, (0, 0, 255, 100), (radius, radius), radius)
         else:
             pygame.draw.circle(range_surface, (255, 0, 0, 100), (radius, radius), radius)
@@ -484,16 +500,8 @@ while running:
         if icon:
             rect = icon.get_rect(center=m_pos)
             screen.blit(icon, rect)
-    abilities.draw()
 
     pygame.display.flip()
     clock.tick(60)
-
-    # Update cooldowns
-    for t in placed_towers:
-        if hasattr(t, 'ubw_cooldown'):
-            t.ubw_cooldown = max(0, t.ubw_cooldown - 16)
-
-    abilities.ubw_cooldown = max(0, abilities.ubw_cooldown - 1)
 
 pygame.quit()

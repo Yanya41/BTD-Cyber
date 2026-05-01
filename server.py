@@ -4,7 +4,9 @@ import pickle
 import time
 import pygame
 import game_logic  # Assuming game_logic is a separate module you have
+import random
 
+pygame.init()
 
 server = "0.0.0.0"  # Listen on all available network interfaces
 port = 5555
@@ -44,7 +46,7 @@ def threaded_client(conn, player_id):
     while True:
         try:
             # Receive data from client
-            data = pickle.loads(conn.recv(4096))
+            data = pickle.loads(conn.recv(65536))
 
             if not data:
                 print("Disconnected")
@@ -53,26 +55,68 @@ def threaded_client(conn, player_id):
             # Handle different request types
             if data["type"] == "place_tower":
                 new_tower = data["tower_data"]
-                new_tower["id"] = game_state["tower_id_counter"]
-                game_state["towers"].append(new_tower)
-                game_state["tower_id_counter"] += 1
-                game_state["cash"] -= 150  # Basic cost logic
+                cost = new_tower.get("cost", 150)
 
-            elif data["type"] == "upgrade":
-                t_id = data["tower_id"]
+                # --- NEW: Server strictly verifies you have enough cash! ---
+                if game_state["cash"] >= cost:
+                    new_tower["id"] = game_state["tower_id_counter"]
+                    new_tower["owner"] = player_id
+                    game_state["towers"].append(new_tower)
+                    game_state["tower_id_counter"] += 1
+                    game_state["cash"] -= cost
+                else:
+                    print(f"Player {player_id} attempted to buy a tower they couldn't afford!")
+
+
+
+            elif data["type"] == "sync_upgrade":
+
+                # 1. Sync the cash balance if it was included
+
+                if "new_cash" in data:
+                    game_state["cash"] = data["new_cash"]
+
+                # 2. Find the tower and apply the specific updates
+
                 for t in game_state["towers"]:
-                    if t["id"] == t_id:
-                        t["level"] = t.get("level", 1) + 1
-                        game_state["cash"] -= 100
+
+                    # --- NEW: Only allow the update if the requesting player is the owner! ---
+
+                    if t["id"] == data["tower_id"] and t.get("owner") == player_id:
+
+                        if "path_left" in data:
+                            t["path_left"] = data["path_left"]
+
+                        if "path_right" in data:
+                            t["path_right"] = data["path_right"]
+
+                        if "target_mode" in data:
+                            t["target_mode"] = data["target_mode"]
+
 
             elif data["type"] == "start_round":
-                # Handle start round
+
                 if not game_state["round_started"] and not game_state["enemies"]:
                     game_state["round_started"] = True
                     game_state["last_spawn_time"] = pygame.time.get_ticks()
-                    # Prepare spawn_queue based on round
-                    # This is simplified; need to implement prepare_round logic
-                    game_state["spawn_queue"] = []  # Add enemies
+                    # --- NEW: Generate actual enemies! ---
+                    round_num = game_state["current_round"]
+                    num_enemies = 5 + (round_num * 2)  # Example scaling: 7 enemies on round 1, 9 on round 2...
+                    new_queue = []
+                    for i in range(num_enemies):
+                        enemy_dict = {
+                            "type": "Skeleton",
+                            "x": 0, "y": 300,  # Matches the start of your Data().path_points
+                            "hp": 1 + (round_num * 0.5),
+                            "dmg": 1,
+                            "speed": 2,
+                            "target_index": 1,
+                            "cash_price": 1,
+                            "id": random.randint(1, 1000000)  # Give each a unique ID
+                        }
+                        delay = 1000  # Wait 1000ms (1 second) between spawns
+                        new_queue.append((enemy_dict, delay))
+                    game_state["spawn_queue"] = new_queue
 
             elif data["type"] == "ubw":
                 if game_state["abilities"]["ubw_cooldown"] == 0:

@@ -17,7 +17,7 @@ class Network:
     def connect(self):
         try:
             self.client.connect(self.addr)
-            return pickle.loads(self.client.recv(4096))
+            return pickle.loads(self.client.recv(65536))
         except Exception as e:
             print(f"Connection Error: {e}")
 
@@ -27,7 +27,7 @@ class Network:
         """
         try:
             self.client.send(pickle.dumps(data))
-            return pickle.loads(self.client.recv(4096))
+            return pickle.loads(self.client.recv(65536))
         except socket.error as e:
             print(f"Socket Error: {e}")
 
@@ -38,7 +38,7 @@ class Network:
         """
         try:
             self.client.send(pickle.dumps(action_data))
-            return pickle.loads(self.client.recv(4096))
+            return pickle.loads(self.client.recv(65536))
         except socket.error as e:
             print(f"Socket Error: {e}")
 
@@ -48,6 +48,6 @@ class Network:
         """
         try:
             self.client.send(pickle.dumps({"type": "get_state"}))
-            return pickle.loads(self.client.recv(4096))
+            return pickle.loads(self.client.recv(65536))
         except socket.error as e:
             print(f"Socket Error: {e}")

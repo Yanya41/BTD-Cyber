@@ -50,13 +50,68 @@ def update_enemies(game_state):
         if dist < e["speed"]:
             e["target_index"] += 1
 
+
+# In game_logic.py
 def update_towers(game_state):
-    """Update towers: shooting, etc."""
-    # Simplified: for each tower, if can shoot, create projectile or explosion
+    now = pygame.time.get_ticks()
+
     for t in game_state["towers"]:
-        # Assume towers have last_shot_time, etc.
-        # This is placeholder; need to implement based on tower type
-        pass
+        # Set stats based on tower type
+        if t["tower_type"] == "goku":
+            cooldown = 1500 - (t.get("path_left", 0) * 200)
+            attack_range = 250
+        else:  # archer
+            cooldown = 1000 - (t.get("path_left", 0) * 100)
+            attack_range = 1000
+
+        # 1. Scan for enemies in range
+        target = None
+        if game_state["enemies"]:
+            in_range_enemies = [e for e in game_state["enemies"] if
+                                math.hypot(t["x"] - e["x"], t["y"] - e["y"]) <= attack_range]
+
+            if in_range_enemies:
+                # Apply First vs Strong targeting logic
+                if t.get("target_mode", "first") == "strong":
+                    target = max(in_range_enemies, key=lambda e: e.get("hp", 0))
+                else:
+                    target = max(in_range_enemies, key=lambda e: e.get("target_index", 0))
+
+        # 2. Look at the target and shoot!
+        if target:
+            dx, dy = target["x"] - t["x"], target["y"] - t["y"]
+            t["angle"] = math.degrees(math.atan2(-dy, dx))  # Update the tower's angle in the master state!
+
+            # Check cooldown
+            if now - t.get("last_shot_time", 0) > cooldown:
+                t["last_shot_time"] = now
+                t["just_shot"] = True  # Send a signal to the client to play the animation!
+                spawn_attack(game_state, t, target)
+            else:
+                t["just_shot"] = False
+        else:
+            t["just_shot"] = False
+
+def spawn_attack(game_state, tower, target):
+    if tower["tower_type"] == "goku":
+        # Logic to create a projectile dict
+        dx, dy = target["x"] - tower["x"], target["y"] - tower["y"]
+        angle = math.degrees(math.atan2(-dy, dx))
+        rad = math.radians(-angle)
+
+        proj = {
+            "x": tower["x"], "y": tower["y"],
+            "vx": math.cos(rad) * 8, "vy": math.sin(rad) * 8,
+            "dmg": 2 + (tower["path_right"] * 5 if tower["path_right"] >= 2 else 0),
+            "pierce": 2 + (tower["path_right"] * 2 if tower["path_right"] >= 1 else 0),
+            "hit_enemies": []
+        }
+        game_state["projectiles"].append(proj)
+    elif tower["tower_type"] == "archer":
+        # Archer creates explosions directly at target
+        game_state["explosions"].append({
+            "x": target["x"], "y": target["y"], "timer": 10, "dmg": 10
+        })
 
 def update_projectiles(game_state):
     """Update projectiles and handle collisions."""
