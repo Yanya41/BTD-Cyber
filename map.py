@@ -263,245 +263,245 @@ def get_tower (tower_type):
 
 
 
-# execution starts here
-pygame.init()
-clock = pygame.time.Clock()
-
-game_data = Data()
-
-draw_map = MapBackground()
-side_menu = SideMenu(400)
-ui = UiManager(pygame.font.Font(MineFont, 25))
-upgrade_panel = UpgradePanel(pygame.font.Font(MineFont, 20))
-round_manager = Round()
-tower_manager = TowerManager()
-network = Network()
-player_id = network.player_id
-placed_towers, projectiles = [], []
-dragging_tower, selected_tower = None, None
-abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
-
-explosions = []
-
-# Main Game Loop
-# Main Game Loop
-running = True
-while running:
-    # ==========================================
-    # 1. NETWORK SYNC (The Server is Boss)
-    # ==========================================
-    current_game_state = network.get_state()
-
-    if current_game_state:
-        # Sync Game Stats
-        game_data.current_cash = current_game_state["cash"]
-        game_data.current_hp = current_game_state["current_hp"]
-        round_manager.current_round = current_game_state["current_round"]
-
-        # --- SYNC TOWERS ---
-        local_tower_ids = [t.id for t in placed_towers]
-        for server_tower in current_game_state["towers"]:
-            if server_tower["id"] not in local_tower_ids:
-                # We found a new tower from the server! Spawn it locally.
-                new_t = tower_manager.create_tower(server_tower["tower_type"], server_tower["x"], server_tower["y"])
-                new_t.id = server_tower["id"]
-                new_t.owner = server_tower.get("owner")  # <-- Save the owner!
-                placed_towers.append(new_t)
-            else:
-                # Update existing towers
-                for local_t in placed_towers:
-                    if local_t.id == server_tower["id"]:
-                        local_t.path_left = server_tower.get("path_left", 0)
-                        local_t.path_right = server_tower.get("path_right", 0)
-                        local_t.damage_dealt = server_tower.get("damage_dealt", 0)
-                        local_t.target_mode = server_tower.get("target_mode", "first")
-                        local_t.angle = server_tower.get("angle", 270)
-                        local_t.owner = server_tower.get("owner")  # <-- Keep owner updated!
-
-                        if server_tower.get("just_shot"):
-                            local_t.last_shot_time = pygame.time.get_ticks()
-
-        # --- SYNC ENEMIES ---
-        from skeleton_rounds import Skeleton
-
-        local_enemy_ids = [e.id for e in round_manager.enemies]
-        active_server_ids = [se["id"] for se in current_game_state["enemies"]]
-
-        # 1. Remove dead/leaked enemies from the local screen
-        round_manager.enemies = [e for e in round_manager.enemies if e.id in active_server_ids]
-
-        # 2. Add new enemies or update existing ones
-        for s_enemy in current_game_state["enemies"]:
-            if s_enemy["id"] not in local_enemy_ids:
-                visual_enemy = Skeleton()
-                visual_enemy.id = s_enemy["id"]
-                visual_enemy.x = s_enemy["x"]
-                visual_enemy.y = s_enemy["y"]
-                visual_enemy.hp = s_enemy["hp"]
-                round_manager.enemies.append(visual_enemy)
-            else:
-                for local_e in round_manager.enemies:
-                    if local_e.id == s_enemy["id"]:
-                        if s_enemy["x"] < local_e.x:
-                            local_e.flip_image = True
-                        elif s_enemy["x"] > local_e.x:
-                            local_e.flip_image = False
-
-                        local_e.x = s_enemy["x"]
-                        local_e.y = s_enemy["y"]
-                        local_e.hp = s_enemy["hp"]
-
-    # ==========================================
-    # 2. EVENT HANDLING (Player Inputs)
-    # ==========================================
-    m_pos = pygame.mouse.get_pos()
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT: running = False
-
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            mx, my = m_pos
-
-            # Upgrade panel buttons
-            if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
-                if upgrade_panel.btn_left.collidepoint(mx, my):
-                    # If the upgrade succeeds locally (returns True)
-                    if selected_tower.upgrade_left(game_data, placed_towers):
-                        # Tell the server to save the new path level and our new cash balance!
-                        network.send({
-                            "type": "sync_upgrade",
-                            "tower_id": selected_tower.id,
-                            "path_left": selected_tower.path_left,
-                            "new_cash": game_data.current_cash
-                        })
-
-                elif upgrade_panel.btn_right.collidepoint(mx, my):
-                    if selected_tower.upgrade_right(game_data, placed_towers):
-                        network.send({
-                            "type": "sync_upgrade",
-                            "tower_id": selected_tower.id,
-                            "path_right": selected_tower.path_right,
-                            "new_cash": game_data.current_cash
-                        })
-
-                elif upgrade_panel.btn_target.collidepoint(mx, my):
-                    # Toggle targeting locally
-                    selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
-                    # Tell the server about the change
-                    network.send({
-                        "type": "sync_upgrade",
-                        "tower_id": selected_tower.id,
-                        "target_mode": selected_tower.target_mode
-                    })
-
-            # Start round button
-            elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
-                network.send({"type": "start_round"})
-
-            # The "Shop"
-            elif 1620 <= mx <= 1920 and 200 <= my <= 300:
-                if game_data.current_cash >= 550: dragging_tower = "goku"
-
-            elif 1620 <= mx <= 1920 and 350 <= my <= 450:
-                if game_data.current_cash >= 600: dragging_tower = "archer"
-
-            # UBW Ability
-            elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
-                network.send({"type": "ubw"})  # Ask server to cast ability!
-
-                # Deselect tower
-            else:
-                # --- NEW: Only select towers that belong to YOU! ---
-                selected_tower = next((t for t in placed_towers if
-                                       getattr(t, 'owner', None) == player_id and math.hypot(mx - t.x, my - t.y) < 40),None)
-
-        if event.type == pygame.MOUSEBUTTONUP:
-            if dragging_tower and m_pos[0] < 1620:
-                if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
-                                                                                                              m_pos[1],
-                                                                                                              placed_towers,
-                                                                                                              50):
-                    new_t = tower_manager.create_tower(dragging_tower, m_pos[0], m_pos[1])
-                    network.send({
-                        "type": "place_tower",
-                        "tower_data": new_t.to_dict()
-                    })
-                dragging_tower = None
-            elif dragging_tower and m_pos[0] >= 1620:
-                dragging_tower = None  # Cancel drag if dropped back in shop
-
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                network.send({"type": "start_round"})
-
-    # ==========================================
-    # 3. DRAWING SECTION
-    # ==========================================
-    draw_map.draw()
-
-    # Draw Enemies and animate them
-    now = pygame.time.get_ticks()
-    for e in round_manager.enemies:
-        if e.frames and (now - e.last_update > e.frame_time):
-            e.current_frame = (e.current_frame + 1) % len(e.frames)
-            e.last_update = now
-        e.draw(screen)
-
-    # Draw Towers
-    for t in placed_towers:
-        t.draw(screen, 1)
-
-    # Draw Server-Side Projectiles & Explosions
-    if current_game_state:
-        # Draw Kamehamehas
-        for p in current_game_state.get("projectiles", []):
-            size = p.get("size", 10)
-            pygame.draw.circle(screen, (173, 216, 230), (int(p["x"]), int(p["y"])), size)
-            pygame.draw.circle(screen, (255, 255, 255), (int(p["x"]), int(p["y"])), size // 2)
-
-        # Draw Explosions
-        for ex in current_game_state.get("explosions", []):
-            timer = ex.get("timer", 10)
-            max_radius = ex.get("max_radius", 50)
-            # Calculate radius based on timer for an expanding/fading effect
-            radius = max_radius * (1 - (timer / 10))
-            if radius > 0:
-                pygame.draw.circle(screen, (255, 165, 0), (int(ex["x"]), int(ex["y"])), int(radius))
-                pygame.draw.circle(screen, (255, 255, 255), (int(ex["x"]), int(ex["y"])), int(radius // 2))
-
-    # UI & Menus
-    side_menu.draw()
-    ui.draw(game_data, round_manager)
-    abilities.draw()
-
-    # Dragging and Selected Tower Overlays
-    if selected_tower:
-        pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range, 2)
-        range_surface_0 = pygame.Surface((selected_tower.range * 2, selected_tower.range * 2), pygame.SRCALPHA)
-        pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range),
-                           selected_tower.range)
-        screen.blit(range_surface_0, (selected_tower.x - selected_tower.range, selected_tower.y - selected_tower.range))
-        upgrade_panel.draw(selected_tower, placed_towers)
-
-    if dragging_tower:
-        radius = get_tower(dragging_tower)[1]
-        range_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-        if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
-                                                                                                      m_pos[1],
-                                                                                                      placed_towers,
-                                                                                                      50):
-            pygame.draw.circle(range_surface, (0, 0, 255, 100), (radius, radius), radius)
-        else:
-            pygame.draw.circle(range_surface, (255, 0, 0, 100), (radius, radius), radius)
-
-        pygame.draw.circle(range_surface, (255, 0, 255, 255), (radius, radius), radius, 2)
-        screen.blit(range_surface, (m_pos[0] - radius, m_pos[1] - radius))
-
-        icon = load_image(get_tower(dragging_tower)[0], alpha=True)
-        if icon:
-            rect = icon.get_rect(center=m_pos)
-            screen.blit(icon, rect)
-
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+# # execution starts here
+# pygame.init()
+# clock = pygame.time.Clock()
+#
+# game_data = Data()
+#
+# draw_map = MapBackground()
+# side_menu = SideMenu(400)
+# ui = UiManager(pygame.font.Font(MineFont, 25))
+# upgrade_panel = UpgradePanel(pygame.font.Font(MineFont, 20))
+# round_manager = Round()
+# tower_manager = TowerManager()
+# network = Network()
+# player_id = network.player_id
+# placed_towers, projectiles = [], []
+# dragging_tower, selected_tower = None, None
+# abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
+#
+# explosions = []
+#
+# # Main Game Loop
+# # Main Game Loop
+# running = True
+# while running:
+#     # ==========================================
+#     # 1. NETWORK SYNC (The Server is Boss)
+#     # ==========================================
+#     current_game_state = network.get_state()
+#
+#     if current_game_state:
+#         # Sync Game Stats
+#         game_data.current_cash = current_game_state["cash"]
+#         game_data.current_hp = current_game_state["current_hp"]
+#         round_manager.current_round = current_game_state["current_round"]
+#
+#         # --- SYNC TOWERS ---
+#         local_tower_ids = [t.id for t in placed_towers]
+#         for server_tower in current_game_state["towers"]:
+#             if server_tower["id"] not in local_tower_ids:
+#                 # We found a new tower from the server! Spawn it locally.
+#                 new_t = tower_manager.create_tower(server_tower["tower_type"], server_tower["x"], server_tower["y"])
+#                 new_t.id = server_tower["id"]
+#                 new_t.owner = server_tower.get("owner")  # <-- Save the owner!
+#                 placed_towers.append(new_t)
+#             else:
+#                 # Update existing towers
+#                 for local_t in placed_towers:
+#                     if local_t.id == server_tower["id"]:
+#                         local_t.path_left = server_tower.get("path_left", 0)
+#                         local_t.path_right = server_tower.get("path_right", 0)
+#                         local_t.damage_dealt = server_tower.get("damage_dealt", 0)
+#                         local_t.target_mode = server_tower.get("target_mode", "first")
+#                         local_t.angle = server_tower.get("angle", 270)
+#                         local_t.owner = server_tower.get("owner")  # <-- Keep owner updated!
+#
+#                         if server_tower.get("just_shot"):
+#                             local_t.last_shot_time = pygame.time.get_ticks()
+#
+#         # --- SYNC ENEMIES ---
+#         from skeleton_rounds import Skeleton
+#
+#         local_enemy_ids = [e.id for e in round_manager.enemies]
+#         active_server_ids = [se["id"] for se in current_game_state["enemies"]]
+#
+#         # 1. Remove dead/leaked enemies from the local screen
+#         round_manager.enemies = [e for e in round_manager.enemies if e.id in active_server_ids]
+#
+#         # 2. Add new enemies or update existing ones
+#         for s_enemy in current_game_state["enemies"]:
+#             if s_enemy["id"] not in local_enemy_ids:
+#                 visual_enemy = Skeleton()
+#                 visual_enemy.id = s_enemy["id"]
+#                 visual_enemy.x = s_enemy["x"]
+#                 visual_enemy.y = s_enemy["y"]
+#                 visual_enemy.hp = s_enemy["hp"]
+#                 round_manager.enemies.append(visual_enemy)
+#             else:
+#                 for local_e in round_manager.enemies:
+#                     if local_e.id == s_enemy["id"]:
+#                         if s_enemy["x"] < local_e.x:
+#                             local_e.flip_image = True
+#                         elif s_enemy["x"] > local_e.x:
+#                             local_e.flip_image = False
+#
+#                         local_e.x = s_enemy["x"]
+#                         local_e.y = s_enemy["y"]
+#                         local_e.hp = s_enemy["hp"]
+#
+#     # ==========================================
+#     # 2. EVENT HANDLING (Player Inputs)
+#     # ==========================================
+#     m_pos = pygame.mouse.get_pos()
+#     for event in pygame.event.get():
+#         if event.type == pygame.QUIT: running = False
+#
+#         if event.type == pygame.MOUSEBUTTONDOWN:
+#             mx, my = m_pos
+#
+#             # Upgrade panel buttons
+#             if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
+#                 if upgrade_panel.btn_left.collidepoint(mx, my):
+#                     # If the upgrade succeeds locally (returns True)
+#                     if selected_tower.upgrade_left(game_data, placed_towers):
+#                         # Tell the server to save the new path level and our new cash balance!
+#                         network.send({
+#                             "type": "sync_upgrade",
+#                             "tower_id": selected_tower.id,
+#                             "path_left": selected_tower.path_left,
+#                             "new_cash": game_data.current_cash
+#                         })
+#
+#                 elif upgrade_panel.btn_right.collidepoint(mx, my):
+#                     if selected_tower.upgrade_right(game_data, placed_towers):
+#                         network.send({
+#                             "type": "sync_upgrade",
+#                             "tower_id": selected_tower.id,
+#                             "path_right": selected_tower.path_right,
+#                             "new_cash": game_data.current_cash
+#                         })
+#
+#                 elif upgrade_panel.btn_target.collidepoint(mx, my):
+#                     # Toggle targeting locally
+#                     selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
+#                     # Tell the server about the change
+#                     network.send({
+#                         "type": "sync_upgrade",
+#                         "tower_id": selected_tower.id,
+#                         "target_mode": selected_tower.target_mode
+#                     })
+#
+#             # Start round button
+#             elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
+#                 network.send({"type": "start_round"})
+#
+#             # The "Shop"
+#             elif 1620 <= mx <= 1920 and 200 <= my <= 300:
+#                 if game_data.current_cash >= 550: dragging_tower = "goku"
+#
+#             elif 1620 <= mx <= 1920 and 350 <= my <= 450:
+#                 if game_data.current_cash >= 600: dragging_tower = "archer"
+#
+#             # UBW Ability
+#             elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
+#                 network.send({"type": "ubw"})  # Ask server to cast ability!
+#
+#                 # Deselect tower
+#             else:
+#                 # --- NEW: Only select towers that belong to YOU! ---
+#                 selected_tower = next((t for t in placed_towers if
+#                                        getattr(t, 'owner', None) == player_id and math.hypot(mx - t.x, my - t.y) < 40),None)
+#
+#         if event.type == pygame.MOUSEBUTTONUP:
+#             if dragging_tower and m_pos[0] < 1620:
+#                 if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
+#                                                                                                               m_pos[1],
+#                                                                                                               placed_towers,
+#                                                                                                               50):
+#                     new_t = tower_manager.create_tower(dragging_tower, m_pos[0], m_pos[1])
+#                     network.send({
+#                         "type": "place_tower",
+#                         "tower_data": new_t.to_dict()
+#                     })
+#                 dragging_tower = None
+#             elif dragging_tower and m_pos[0] >= 1620:
+#                 dragging_tower = None  # Cancel drag if dropped back in shop
+#
+#         if event.type == pygame.KEYDOWN:
+#             if event.key == pygame.K_SPACE:
+#                 network.send({"type": "start_round"})
+#
+#     # ==========================================
+#     # 3. DRAWING SECTION
+#     # ==========================================
+#     draw_map.draw()
+#
+#     # Draw Enemies and animate them
+#     now = pygame.time.get_ticks()
+#     for e in round_manager.enemies:
+#         if e.frames and (now - e.last_update > e.frame_time):
+#             e.current_frame = (e.current_frame + 1) % len(e.frames)
+#             e.last_update = now
+#         e.draw(screen)
+#
+#     # Draw Towers
+#     for t in placed_towers:
+#         t.draw(screen, 1)
+#
+#     # Draw Server-Side Projectiles & Explosions
+#     if current_game_state:
+#         # Draw Kamehamehas
+#         for p in current_game_state.get("projectiles", []):
+#             size = p.get("size", 10)
+#             pygame.draw.circle(screen, (173, 216, 230), (int(p["x"]), int(p["y"])), size)
+#             pygame.draw.circle(screen, (255, 255, 255), (int(p["x"]), int(p["y"])), size // 2)
+#
+#         # Draw Explosions
+#         for ex in current_game_state.get("explosions", []):
+#             timer = ex.get("timer", 10)
+#             max_radius = ex.get("max_radius", 50)
+#             # Calculate radius based on timer for an expanding/fading effect
+#             radius = max_radius * (1 - (timer / 10))
+#             if radius > 0:
+#                 pygame.draw.circle(screen, (255, 165, 0), (int(ex["x"]), int(ex["y"])), int(radius))
+#                 pygame.draw.circle(screen, (255, 255, 255), (int(ex["x"]), int(ex["y"])), int(radius // 2))
+#
+#     # UI & Menus
+#     side_menu.draw()
+#     ui.draw(game_data, round_manager)
+#     abilities.draw()
+#
+#     # Dragging and Selected Tower Overlays
+#     if selected_tower:
+#         pygame.draw.circle(screen, (255, 255, 0), (selected_tower.x, selected_tower.y), selected_tower.range, 2)
+#         range_surface_0 = pygame.Surface((selected_tower.range * 2, selected_tower.range * 2), pygame.SRCALPHA)
+#         pygame.draw.circle(range_surface_0, (255, 255, 0, 50), (selected_tower.range, selected_tower.range),
+#                            selected_tower.range)
+#         screen.blit(range_surface_0, (selected_tower.x - selected_tower.range, selected_tower.y - selected_tower.range))
+#         upgrade_panel.draw(selected_tower, placed_towers)
+#
+#     if dragging_tower:
+#         radius = get_tower(dragging_tower)[1]
+#         range_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+#         if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
+#                                                                                                       m_pos[1],
+#                                                                                                       placed_towers,
+#                                                                                                       50):
+#             pygame.draw.circle(range_surface, (0, 0, 255, 100), (radius, radius), radius)
+#         else:
+#             pygame.draw.circle(range_surface, (255, 0, 0, 100), (radius, radius), radius)
+#
+#         pygame.draw.circle(range_surface, (255, 0, 255, 255), (radius, radius), radius, 2)
+#         screen.blit(range_surface, (m_pos[0] - radius, m_pos[1] - radius))
+#
+#         icon = load_image(get_tower(dragging_tower)[0], alpha=True)
+#         if icon:
+#             rect = icon.get_rect(center=m_pos)
+#             screen.blit(icon, rect)
+#
+#     pygame.display.flip()
+#     clock.tick(60)
+#
+# pygame.quit()
