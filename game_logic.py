@@ -92,46 +92,110 @@ def update_towers(game_state):
         else:
             t["just_shot"] = False
 
+
 def spawn_attack(game_state, tower, target):
+    p_left = tower.get("path_left", 0)
+    p_right = tower.get("path_right", 0)
+
     if tower["tower_type"] == "goku":
-        # Logic to create a projectile dict
         dx, dy = target["x"] - tower["x"], target["y"] - tower["y"]
         angle = math.degrees(math.atan2(-dy, dx))
         rad = math.radians(-angle)
 
+        # --- FIXED: Pull the base stats dynamically from the blueprint! ---
+        base_dmg = tower.get("base_dmg", 2)
+        base_pierce = tower.get("base_pierce", 2)
+        base_size = tower.get("base_size", 10)
+
         proj = {
             "x": tower["x"], "y": tower["y"],
             "vx": math.cos(rad) * 8, "vy": math.sin(rad) * 8,
-            "dmg": 2 + (tower["path_right"] * 5 if tower["path_right"] >= 2 else 0),
-            "pierce": 2 + (tower["path_right"] * 2 if tower["path_right"] >= 1 else 0),
+            "dmg": base_dmg + (5 if p_right >= 2 else 0),
+            "pierce": base_pierce + (2 if p_right >= 1 else 0),
+            "size": base_size + (10 if p_left >= 2 else 0),
+            "seeking": True if p_right >= 3 else False,
+            "returns": True if p_left >= 3 else False,
+            "has_returned": False,
+            "speed": 8,
             "hit_enemies": []
         }
         game_state["projectiles"].append(proj)
+
     elif tower["tower_type"] == "archer":
-        # Archer creates explosions directly at target
+        # --- FIXED: Pull the base damage dynamically! ---
+        base_dmg = tower.get("base_dmg", 5)
+
+        exp_dmg = base_dmg + (5 if p_left >= 1 else 0) + (10 if p_left >= 2 else 0)
+        exp_radius = 50 + (25 if p_right >= 3 else 0)
+
         game_state["explosions"].append({
-            "x": target["x"], "y": target["y"], "timer": 10, "dmg": 10
+            "x": target["x"], "y": target["y"],
+            "timer": 10,
+            "dmg": exp_dmg,
+            "max_radius": exp_radius
         })
 
+    elif tower["tower_type"] == "archer":
+        # Calculate Archer upgrades from towers.py
+        exp_dmg = 5 + (5 if p_left >= 1 else 0) + (10 if p_left >= 2 else 0)
+        exp_radius = 50 + (25 if p_right >= 3 else 0)  # "EXPLOSION" upgrade makes it 50% bigger
+
+        game_state["explosions"].append({
+            "x": target["x"], "y": target["y"],
+            "timer": 10,
+            "dmg": exp_dmg,
+            "max_radius": exp_radius  # Tell the client how big to draw it!
+        })
+
+
 def update_projectiles(game_state):
-    """Update projectiles and handle collisions."""
+    """Update projectiles, handle collisions, seeking, and returning."""
     for p in game_state["projectiles"][:]:
+
+        # 1. SEEKING LOGIC (Right Path Lvl 3)
+        if p.get("seeking") and game_state["enemies"]:
+            target = min(game_state["enemies"], key=lambda e: math.hypot(p["x"] - e["x"], p["y"] - e["y"]))
+            dx, dy = target["x"] - p["x"], target["y"] - p["y"]
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                p["vx"] += (dx / dist) * 0.6
+                p["vy"] += (dy / dist) * 0.6
+                mag = math.hypot(p["vx"], p["vy"])
+                p["vx"] = (p["vx"] / mag) * p.get("speed", 8)
+                p["vy"] = (p["vy"] / mag) * p.get("speed", 8)
+
         # Move projectile
         p["x"] += p["vx"]
         p["y"] += p["vy"]
 
-        # Check collisions with enemies
+        # 2. RETURN LOGIC (Left Path Lvl 3)
+        if p.get("returns") and not p.get("has_returned"):
+            if p["x"] < -50 or p["x"] > 1970 or p["y"] < -50 or p["y"] > 1130:
+                p["vx"] *= -1
+                p["vy"] *= -1
+                p["has_returned"] = True
+
+        # 3. COLLISION LOGIC
+        hit_occurred = False
         for e in game_state["enemies"]:
-            if math.hypot(p["x"] - e["x"], p["y"] - e["y"]) < 45:
+            # Make sure we don't hit the same enemy twice with a returning projectile
+            if e["id"] not in p.get("hit_enemies", []) and math.hypot(p["x"] - e["x"], p["y"] - e["y"]) < 45:
                 e["hp"] -= p["dmg"]
+                p["hit_enemies"].append(e["id"])  # Mark as hit!
                 p["pierce"] -= 1
+                hit_occurred = True
                 if p["pierce"] <= 0:
                     game_state["projectiles"].remove(p)
                 break
 
-        # Remove off-screen
-        if p["x"] < -50 or p["x"] > 1970 or p["y"] < -50 or p["y"] > 1130:
-            game_state["projectiles"].remove(p)
+        if hit_occurred:
+            continue
+
+        # Remove off-screen ONLY if it's not a returning projectile that hasn't returned yet
+        if not p.get("returns") or p.get("has_returned"):
+            if p["x"] < -100 or p["x"] > 2020 or p["y"] < -100 or p["y"] > 1180:
+                if p in game_state["projectiles"]:
+                    game_state["projectiles"].remove(p)
 
 def update_explosions(game_state):
     """Update explosions and damage enemies."""
@@ -144,16 +208,38 @@ def update_explosions(game_state):
         if ex["timer"] <= 0:
             game_state["explosions"].remove(ex)
 
+
 def remove_dead_enemies(game_state):
-    """Remove dead enemies and give cash."""
+    """Remove dead enemies, give cash, and handle Barrel splitting."""
     surviving = []
+    new_spawns = []  # Store enemies spawned from deaths (like the barrel popping)
+
     for e in game_state["enemies"]:
         if e["hp"] > 0:
             surviving.append(e)
         else:
             game_state["cash"] += e.get("cash_price", 1)
-            # Handle on_death if applicable
-    game_state["enemies"] = surviving
+
+            # --- FIXED: Handle SkeletonBarrel Death manually on the Server ---
+            if e.get("type") == "SkeletonBarrel":
+                import random
+                for _ in range(3):
+                    # Create a raw Skeleton dictionary directly on the server
+                    new_skel = {
+                        "x": e["x"] + random.randint(-15, 15),
+                        "y": e["y"] + random.randint(-15, 15),
+                        "speed": 3,
+                        "target_index": e["target_index"],
+                        "hp": 1,
+                        "dmg": 1,
+                        "cash_price": 1,
+                        "type": "Skeleton",
+                        "id": random.randint(1, 1000000)  # Give it a unique network ID
+                    }
+                    new_spawns.append(new_skel)
+
+    # Combine the survivors with the newly spawned skeletons
+    game_state["enemies"] = surviving + new_spawns
 
 def update_game_state(game_state):
     """Main update function."""

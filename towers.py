@@ -144,7 +144,7 @@ class Archer(Tower):
 
         # Base Stats
         self.base_dmg = 5
-        self.base_speed = 1000  # Archer shoots faster than Goku
+        self.base_speed = 4000  # Archer shoots faster than Goku
         self.base_range = 1000
 
         self.angle = 270

@@ -1,23 +1,28 @@
 import pygame
 import os
 
+
 class MainMenu:
     def __init__(self, screen):
         self.screen = screen
-        self.font = pygame.font.Font(None, 74)
+        self.MineFont = os.path.join('Images', 'MineFont.ttf')
+        self.font = pygame.font.Font(self.MineFont, 74)
         self.options = ["Start Game", "Options", "Exit"]
         self.selected_option = -1
         self.option_rects = []
         self.hover_levels = [100 for _ in self.options]
 
-        self.title_font = pygame.font.Font(None, 110)
+        # Title setup
+        self.title_font = pygame.font.Font(self.MineFont, 110)
         self.title = "Royal TD"
         self.title_color = (255, 215, 0)
 
+        # Hover over sound effects
         self.hover_sound = pygame.mixer.Sound(os.path.join("SoundEffects", "hover_menu.wav"))
         self.click_sound = pygame.mixer.Sound(os.path.join("SoundEffects", "click_menu.wav"))
         self.last_hover = -1
 
+        # Background setup
         self.background = pygame.image.load(os.path.join("Images", "background.jpg")).convert()
         self.background = pygame.transform.scale(self.background, (1920, 1080))
 
@@ -25,9 +30,7 @@ class MainMenu:
         self.screen.blit(self.background, (0, 0))
         self.option_rects = []
 
-        title_surface = self.title_font.render(self.title, True, self.title_color)
-        title_rect = title_surface.get_rect(center=(self.screen.get_width() // 2, 200))
-        self.screen.blit(title_surface, title_rect)
+        self.draw_styled_text(self.title, self.title_font, self.title_color, (self.screen.get_width() // 2, 150), shadow_color=(100, 100, 0))
 
         for index, option in enumerate(self.options):
             if index == self.selected_option:
@@ -69,3 +72,16 @@ class MainMenu:
                         return self.options[i]
 
         return None
+
+    def draw_styled_text(self, text, font, color, pos, shadow_color): # Changed shadow to black so it shows up against the white!
+        # --- 1. Draw the Shadow ---
+        shadow_surf = font.render(text, True, shadow_color)
+        # Create a rect and set its center to the position you passed in, plus a tiny offset
+        shadow_rect = shadow_surf.get_rect(center=(pos[0] + 4, pos[1] + 4))
+        self.screen.blit(shadow_surf, shadow_rect)
+
+        # --- 2. Draw the Main Text ---
+        text_surf = font.render(text, True, color)
+        # Create a rect and set its center exactly to the position you passed in
+        text_rect = text_surf.get_rect(center=pos)
+        self.screen.blit(text_surf, text_rect)

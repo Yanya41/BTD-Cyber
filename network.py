@@ -57,21 +57,36 @@ class Network:
             print(f"Error loading initial game state: {e}")
             return False
 
-    def send_action(self, action_data):
-        """
-        Sends an action to the server and receives the updated game state.
-        action_data: dict like {"type": "place_tower", "tower_data": {...}}
-        """
-        try:
-            self.client.send(pickle.dumps(action_data))
-            return pickle.loads(self.client.recv(65536))
-        except socket.error as e:
-            print(f"Socket Error: {e}")
+    def send_action(self, data):
+        self.client.send(pickle.dumps(data))
+
+        # --- NEW: Robust Packet Assembly ---
+        packet = b""
+        while True:
+            chunk = self.client.recv(65536)
+            if not chunk:
+                return None
+
+            packet += chunk  # Glue the new chunk to the existing data
+
+            try:
+                # If the packet is whole, it works and escapes the loop!
+                return pickle.loads(packet)
+            except Exception:
+                # If the packet is chopped in half, it fails safely,
+                # loops back to the top, and waits for the missing half!
+                pass
 
     def get_state(self):
         """Requests the current game state from the server."""
-        try:
-            self.client.send(pickle.dumps({"type": "get_state"}))
-            return pickle.loads(self.client.recv(65536))
-        except socket.error as e:
-            print(f"Socket Error: {e}")
+        self.client.send(pickle.dumps({"type": "get_state"}))
+        packet = b""
+        while True:
+            chunk = self.client.recv(65536)
+            if not chunk:
+                return None
+            packet += chunk
+            try:
+                return pickle.loads(packet)
+            except Exception:
+                pass

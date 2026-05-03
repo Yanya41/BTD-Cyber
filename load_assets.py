@@ -53,12 +53,10 @@ def load_image(filename, scale_to=None, alpha=False):
     path = os.path.join(image_folder, filename)
     try:
         image = pygame.image.load(path)
-
         if alpha:
             image = image.convert_alpha()
         else:
             image = image.convert()
-
         if scale_to:
             image = pygame.transform.scale(image, scale_to)
         return image
@@ -68,27 +66,29 @@ def load_image(filename, scale_to=None, alpha=False):
 
 
 
-#loading the skeleton and shielded skeleton frames for animation
 skeleton_frames = []
-for i in range(2):
-    frame_filename = f"{skeleton_name_prefix}_{i}.png"
-    frame_image = load_image(frame_filename, scale_to=(60, 60), alpha=True)
-
-    if frame_image:
-        # Assuming the skeleton has a black background to remove
-        frame_image.set_colorkey((0, 0, 0))
-        skeleton_frames.append(frame_image)
-    else:
-        print(f"Warning: Could not load {frame_filename}. Animation may be incomplete.")
-
 shielded_skeleton_frames = []
-for i in range(2):
-    frame_filename = f"{shielded_skeleton_name_prefix}_{i}.png"
-    frame_image = load_image(frame_filename, scale_to=(60, 60), alpha=True)
 
-    if frame_image:
-        # Assuming the skeleton has a black background to remove
-        frame_image.set_colorkey((0, 0, 0))
-        shielded_skeleton_frames.append(frame_image)
-    else:
-        print(f"Warning: Could not load {frame_filename}. Animation may be incomplete.")
+
+def load_all_assets():
+    global skeleton_frames, shielded_skeleton_frames
+
+    # Load regular skeletons
+    for i in range(2):
+        frame_filename = f"{skeleton_name_prefix}_{i}.png"
+        frame_image = load_image(frame_filename, scale_to=(60, 60), alpha=True)
+        if frame_image:
+            frame_image.set_colorkey((0, 0, 0))
+            skeleton_frames.append(frame_image)
+        else:
+            print(f"Warning: Could not load {frame_filename}.")
+
+    # Load shielded skeletons
+    for i in range(2):
+        frame_filename = f"{shielded_skeleton_name_prefix}_{i}.png"
+        frame_image = load_image(frame_filename, scale_to=(60, 60), alpha=True)
+        if frame_image:
+            frame_image.set_colorkey((0, 0, 0))
+            shielded_skeleton_frames.append(frame_image)
+        else:
+            print(f"Warning: Could not load {frame_filename}.")

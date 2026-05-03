@@ -12,7 +12,7 @@ goku_icon_path = os.path.join("Cards", "goku.png")
 goku_idle_path = "goku_idle.png"
 goku_shoot_path = "goku_shoot.png"
 
-archer_icon_path = os.path.join("Cards", "wizard.png")
+archer_icon_path = os.path.join("Cards", "archer.png")
 archer_idle_path = "archer_idle.png"
 archer_shoot_path = "archer_shoot.png"
 ubw_icon_path = "unlimited_blade_works.png"

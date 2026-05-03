@@ -26,7 +26,7 @@ class LoginMenu:
         self.screen.blit(self.background, (0, 0))
 
         # Title
-        title_surf = self.title_font.render("Lobby Authentication", True, (255, 215, 0))
+        title_surf = self.title_font.render("User Login", True, (255, 215, 0))
         title_rect = title_surf.get_rect(center=(self.screen.get_width() // 2, 200))
         self.screen.blit(title_surf, title_rect)
 
@@ -59,7 +59,7 @@ class LoginMenu:
 
         # Labels
         user_label = self.font.render("Username:", True, (255, 255, 255))
-        pass_label = self.font.render("Password / Lobby Code:", True, (255, 255, 255))
+        pass_label = self.font.render("Password", True, (255, 255, 255))
         self.screen.blit(user_label, (self.user_rect.x, self.user_rect.y - 40))
         self.screen.blit(pass_label, (self.pass_rect.x, self.pass_rect.y - 40))
 
@@ -69,8 +69,6 @@ class LoginMenu:
 
         self.screen.blit(user_text_surf, (self.user_rect.x + 10, self.user_rect.y + 15))
         self.screen.blit(pass_text_surf, (self.pass_rect.x + 10, self.pass_rect.y + 15))
-
-        pygame.display.flip()
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:

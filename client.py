@@ -16,7 +16,7 @@ from map import MapBackground, SideMenu, UiManager, UpgradePanel, Abilities, get
 from game_data import Data
 from rounds import Round
 from towers import TowerManager
-from skeleton_rounds import Skeleton
+from skeleton_rounds import Skeleton, ShieldedSkeleton, SkeletonBarrel
 
 if load_assets.check_files_exist():
     print("Missing assets, exiting.")
@@ -28,6 +28,8 @@ clock = pygame.time.Clock()
 
 screen = pygame.display.set_mode((1920, 1080))
 pygame.display.set_caption("Royal TD")
+
+load_assets.load_all_assets()
 
 # Initialize Menus
 main_menu = MainMenu(screen)
@@ -58,6 +60,50 @@ running = True
 username = ""
 last_ping_time = 0
 
+
+class ErrorPopup:
+    def __init__(self):
+        self.message = ""
+        self.active = False
+        self.start_time = 0
+        self.duration = 3000
+
+        # --- FIXED: Load the font ONLY ONCE when the game starts! ---
+        self.font = pygame.font.SysFont("comicsans", 40)
+        self.text_surface = None
+        self.box_width = 0
+        self.box_height = 0
+
+    def trigger(self, msg):
+        """Call this to make the popup appear."""
+        self.message = msg
+        self.active = True
+        self.start_time = pygame.time.get_ticks()
+
+        # --- FIXED: Render the text ONLY ONCE when the error happens! ---
+        self.text_surface = self.font.render(self.message, True, (255, 255, 255))
+        self.box_width = self.text_surface.get_width() + 40
+        self.box_height = self.text_surface.get_height() + 40
+
+    def draw(self, screen):
+        """Call this every frame in your draw loop."""
+        if self.active:
+            if pygame.time.get_ticks() - self.start_time > self.duration:
+                self.active = False
+                return
+
+            # Math for perfectly centering the box
+            x = (1920 // 2) - (self.box_width // 2)
+            y = 150
+
+            # Draw the background and border
+            pygame.draw.rect(screen, (150, 0, 0), (x, y, self.box_width, self.box_height), border_radius=10)
+            pygame.draw.rect(screen, (255, 50, 50), (x, y, self.box_width, self.box_height), 3, border_radius=10)
+
+            # Draw the pre-rendered text surface (super fast!)
+            screen.blit(self.text_surface, (x + 20, y + 20))
+
+error_popup = ErrorPopup()
 while running:
     # ==========================================
     # 1. EVENT HANDLING
@@ -89,6 +135,7 @@ while running:
                         else:
                             error_msg = response.get("msg") if response else "Server offline."
                             print(f"Failed: {error_msg}")
+                            error_popup.trigger(error_msg)
 
         elif current_state == "LOBBY_SELECT":
             action = lobby_menu.handle_event(event)
@@ -158,9 +205,7 @@ while running:
                     # Select a tower you own
                 else:
                     selected_tower = next((t for t in placed_towers if
-                                           getattr(t, 'owner', None) == n.player_id and math.hypot(mx - t.x,
-                                                                                                   my - t.y) < 40),
-                                          None)
+                                           getattr(t, 'owner', None) == n.player_id and math.hypot(mx - t.x, my - t.y) < 40),None)
 
             if event.type == pygame.MOUSEBUTTONUP:
                 if dragging_tower and m_pos[0] < 1620:
@@ -230,7 +275,16 @@ while running:
 
             for s_enemy in current_game_state["enemies"]:
                 if s_enemy["id"] not in local_enemy_ids:
-                    visual_enemy = Skeleton()
+
+                    # --- FIXED: Check the enemy type and spawn the correct class! ---
+                    e_type = s_enemy.get("type", "Skeleton")
+                    if e_type == "SkeletonBarrel":
+                        visual_enemy = SkeletonBarrel()
+                    elif e_type == "ShieldedSkeleton":
+                        visual_enemy = ShieldedSkeleton()
+                    else:
+                        visual_enemy = Skeleton()
+
                     visual_enemy.id = s_enemy["id"]
                     visual_enemy.x = s_enemy["x"]
                     visual_enemy.y = s_enemy["y"]
@@ -317,6 +371,7 @@ while running:
                 rect = icon.get_rect(center=m_pos)
                 screen.blit(icon, rect)
 
+    error_popup.draw(screen)
     pygame.display.flip()
     clock.tick(60)
 

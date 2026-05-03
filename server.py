@@ -29,28 +29,30 @@ print("Server Started. Waiting for connections...")
 # Format: {"CODE": {"password": "123", "players": [conn1, conn2], "state": game_state_dict}}
 active_lobbies = {}
 
-
 def generate_lobby_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
 
 def get_initial_game_state():
     """Returns a fresh, clean game state for a new lobby."""
+    from game_data import Data
+
+    # We grab the starting numbers from Data, but we put them in a
+    # separate dictionary so this specific lobby has its own isolated health!
     return {
         "towers": [],
         "enemies": [],
         "projectiles": [],
         "explosions": [],
-        "cash": 1000,
+        "cash": Data().starting_cash,  # <--- Now grabs 10,000!
         "tower_id_counter": 0,
         "current_round": 1,
         "round_started": False,
         "last_spawn_time": 0,
         "spawn_queue": [],
-        "current_hp": 100,
+        "current_hp": Data().starting_hp,  # <--- Now grabs 150!
         "abilities": {"ubw_cooldown": 0}
     }
-
 
 def threaded_client(conn):
     authenticated = False
@@ -80,6 +82,7 @@ def threaded_client(conn):
                     conn.send(json.dumps({"status": "success"}).encode('utf-8'))
                 else:
                     conn.send(json.dumps({"status": "failed", "msg": "Invalid credentials"}).encode('utf-8'))
+
 
             # --- NEW: Register Logic ---
             elif packet.get('action') == 'register':
@@ -143,7 +146,7 @@ def threaded_client(conn):
                 pwd = packet.get('password', '')
 
                 if code in active_lobbies and active_lobbies[code]['password'] == pwd:
-                    if len(active_lobbies[code]['players']) < 2:
+                    if len(active_lobbies[code]['players']) < 4:  # Allow up to 4 players in a lobby
                         active_lobbies[code]['players'].append(conn)
                         active_lobbies[code]['usernames'].append(username)
 
@@ -229,6 +232,13 @@ def threaded_client(conn):
                         game_state["spawn_queue"] = [(enemy_obj.to_dict(), delay) for enemy_obj, delay in r.spawn_queue]
                         game_state["round_started"] = True
                         game_state["last_spawn_time"] = pygame.time.get_ticks()
+
+                elif data["type"] == "ubw":
+                    if game_state["abilities"]["ubw_cooldown"] == 0:
+                        game_state["abilities"]["ubw_cooldown"] = 900  # 15 second cooldown
+                        for e in game_state["enemies"]:
+                            e["hp"] -= 100
+                            game_state["explosions"].append({"x": e["x"], "y": e["y"], "timer": 10, "dmg":0, "max_radius":70})  # Add explosion effect
                 conn.sendall(pickle.dumps(game_state))
             except Exception as e:
                 print(f"Game Loop Error: {e}")
