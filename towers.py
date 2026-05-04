@@ -185,6 +185,10 @@ class Archer(Tower):
             return True
         return False
 
+    def get_sell_value(self):
+        total_invested = self.cost + sum(self.left_costs[:self.path_left]) + sum(self.right_costs[:self.path_right])
+        return total_invested * 0.7  # Sell for 70% of total invested value
+
     def get_stats(self):
         dmg = self.base_dmg + (5 if self.path_left >= 1 else 0) + (10 if self.path_left >= 2 else 0)
         speed = self.base_speed - (200 if self.path_left >= 1 else 0)
@@ -307,6 +311,10 @@ class Goku(Tower):
             self.path_right += 1
             return True
         return False
+
+    def get_sell_value(self):
+        total_invested = self.cost + sum(self.left_costs[:self.path_left]) + sum(self.right_costs[:self.path_right])
+        return total_invested * 0.7  # Sell for 70% of total invested value
 
     @property
     def range(self):

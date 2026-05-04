@@ -5,7 +5,7 @@ import os
 class MainMenu:
     def __init__(self, screen):
         self.screen = screen
-        self.MineFont = os.path.join('Images', 'MineFont.ttf')
+        self.MineFont = os.path.join('Fonts', 'MineFont.ttf')
         self.font = pygame.font.Font(self.MineFont, 74)
         self.options = ["Start Game", "Options", "Exit"]
         self.selected_option = -1

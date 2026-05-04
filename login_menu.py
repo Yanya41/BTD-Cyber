@@ -5,8 +5,11 @@ import os
 class LoginMenu:
     def __init__(self, screen):
         self.screen = screen
-        self.font = pygame.font.Font(None, 50)
-        self.title_font = pygame.font.Font(None, 80)
+        self.MineFont = os.path.join('Fonts', 'MineFont.ttf')
+        self.ProjectFont = os.path.join('Fonts', 'ProjectFont.otf')
+        self.user_font = pygame.font.Font(self.ProjectFont, 50)
+        self.font = pygame.font.Font(self.MineFont, 50)
+        self.title_font = pygame.font.Font(self.MineFont, 80)
 
         self.username = ""
         self.password = ""
@@ -51,8 +54,8 @@ class LoginMenu:
         pygame.draw.rect(self.screen, (50, 100, 200), self.btn_register_rect)
 
         # Button Text
-        login_text = self.font.render("Login", True, (0, 0, 0))
-        reg_text = self.font.render("Register", True, (255, 255, 255))
+        login_text = self.user_font.render("Login", True, (0, 0, 0))
+        reg_text = self.user_font.render("Register", True, (255, 255, 255))
 
         self.screen.blit(login_text, login_text.get_rect(center=self.btn_login_rect.center))
         self.screen.blit(reg_text, reg_text.get_rect(center=self.btn_register_rect.center))
@@ -64,10 +67,10 @@ class LoginMenu:
         self.screen.blit(pass_label, (self.pass_rect.x, self.pass_rect.y - 40))
 
         # Text inside boxes
-        user_text_surf = self.font.render(self.username, True, (255, 255, 255))
+        user_text_surf = self.user_font.render(self.username, True, (255, 255, 255))
         pass_text_surf = self.font.render("*" * len(self.password), True, (255, 255, 255))
 
-        self.screen.blit(user_text_surf, (self.user_rect.x + 10, self.user_rect.y + 15))
+        self.screen.blit(user_text_surf, (self.user_rect.x + 10, self.user_rect.y))
         self.screen.blit(pass_text_surf, (self.pass_rect.x + 10, self.pass_rect.y + 15))
 
     def handle_event(self, event):

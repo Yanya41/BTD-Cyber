@@ -111,6 +111,8 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         self.btn_right = pygame.Rect(1750, 10, 150, 50)# the right upgrade button path
         self.btn_target = pygame.Rect(1750, 100, 120, 50)# the targeting mode button
 
+        self.btn_sell = pygame.Rect(1800, 170, 120, 50) # the sell button (not implemented yet)
+
     def draw(self, tower, placed_towers):
         if not tower:
             return  # Don't draw anything if no tower is selected
@@ -120,6 +122,9 @@ class UpgradePanel: #this is the upgrade panel that is in the bottom left
         # Title aka "Goku Upgrades" or "Archer Upgrades" etc...
         title = self.font.render(f"{tower.tower_type.upper()} Upgrades", True, (255, 255, 255))
         screen.blit(title, (1630, 170))
+
+        sell_btn_text = self.font.render("Sell", True, (255, 255, 255))
+        screen.blit(sell_btn_text, (self.btn_sell.x, self.btn_sell.y))
 
         # Damage Dealt
         dmg_text = self.font.render(f"Damage: {getattr(tower, 'damage_dealt')}", True, (255, 255, 255))

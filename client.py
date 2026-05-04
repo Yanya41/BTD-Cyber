@@ -41,7 +41,7 @@ in_lobby_menu = InLobbyMenu(screen)
 n = Network()
 
 # --- NEW: Initialize your Game UI & Data ---
-MineFont = os.path.join('Images', 'MineFont.ttf')
+MineFont = os.path.join('Fonts', 'MineFont.ttf')
 game_data = Data()
 draw_map = MapBackground()
 side_menu = SideMenu(400)
@@ -175,18 +175,24 @@ while running:
 
                 # Upgrade panel buttons
                 if selected_tower and upgrade_panel.panel_upgrade.collidepoint(mx, my):
-                    if upgrade_panel.btn_left.collidepoint(mx, my):
-                        if selected_tower.upgrade_left(game_data, placed_towers):
+                    if getattr(selected_tower, 'owner', None) == n.player_id:
+                        if upgrade_panel.btn_left.collidepoint(mx, my):
+                            if selected_tower.upgrade_left(game_data, placed_towers):
+                                n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
+                                               "path_left": selected_tower.path_left, "new_cash": game_data.current_cash})
+                        elif upgrade_panel.btn_right.collidepoint(mx, my):
+                            if selected_tower.upgrade_right(game_data, placed_towers):
+                                n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
+                                               "path_right": selected_tower.path_right, "new_cash": game_data.current_cash})
+                        elif upgrade_panel.btn_target.collidepoint(mx, my):
+                            selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
                             n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
-                                           "path_left": selected_tower.path_left, "new_cash": game_data.current_cash})
-                    elif upgrade_panel.btn_right.collidepoint(mx, my):
-                        if selected_tower.upgrade_right(game_data, placed_towers):
-                            n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
-                                           "path_right": selected_tower.path_right, "new_cash": game_data.current_cash})
-                    elif upgrade_panel.btn_target.collidepoint(mx, my):
-                        selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
-                        n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
-                                       "target_mode": selected_tower.target_mode})
+                                           "target_mode": selected_tower.target_mode})
+                        elif upgrade_panel.btn_sell.collidepoint(mx, my):
+                            game_data.current_cash += selected_tower.get_sell_value()
+                            n.send_action({"type": "sell_tower", "tower_id": selected_tower.id, "new_cash": game_data.current_cash})
+                            placed_towers.remove(selected_tower)
+                            selected_tower = None
 
                 # Start round button
                 elif 1670 <= mx <= 1870 and 950 <= my <= 1000:
@@ -204,8 +210,7 @@ while running:
 
                     # Select a tower you own
                 else:
-                    selected_tower = next((t for t in placed_towers if
-                                           getattr(t, 'owner', None) == n.player_id and math.hypot(mx - t.x, my - t.y) < 40),None)
+                    selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40),None)
 
             if event.type == pygame.MOUSEBUTTONUP:
                 if dragging_tower and m_pos[0] < 1620:
@@ -243,11 +248,25 @@ while running:
 
         if current_game_state:
             # Sync Game Stats
-            game_data.current_cash = current_game_state["cash"]
+            if "player_cash" in current_game_state and n.player_id in current_game_state["player_cash"]:
+                game_data.current_cash = current_game_state["player_cash"][n.player_id]
+            else:
+                game_data.current_cash = current_game_state.get("cash", 0)  # Fallback
             game_data.current_hp = current_game_state["current_hp"]
             round_manager.current_round = current_game_state["current_round"]
 
             # Sync Towers
+            active_server_tower_ids = [st["id"] for st in current_game_state["towers"]]
+
+            # --- NEW: 1. Remove towers that were sold/deleted on the server ---
+            for local_t in placed_towers[:]:
+                if local_t.id not in active_server_tower_ids:
+                    # If someone was clicking on the tower when it was sold, deselect it
+                    if selected_tower == local_t:
+                        selected_tower = None
+                    placed_towers.remove(local_t)
+
+            # --- 2. Add or update remaining towers ---
             local_tower_ids = [t.id for t in placed_towers]
             for server_tower in current_game_state["towers"]:
                 if server_tower["id"] not in local_tower_ids:

@@ -28,6 +28,7 @@ print("Server Started. Waiting for connections...")
 # Dictionary holding all active matches.
 # Format: {"CODE": {"password": "123", "players": [conn1, conn2], "state": game_state_dict}}
 active_lobbies = {}
+online_users = {}
 
 def generate_lobby_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
@@ -77,9 +78,13 @@ def threaded_client(conn):
                 pwd = packet.get('password')
 
                 if database_manager.verify_login(user, pwd):
-                    authenticated = True
-                    username = user
-                    conn.send(json.dumps({"status": "success"}).encode('utf-8'))
+                    if user in online_users:
+                        conn.send(json.dumps({"status": "failed", "msg": "Account already online!"}).encode('utf-8'))
+                    else:
+                        authenticated = True
+                        username = user
+                        online_users[user] = conn
+                        conn.send(json.dumps({"status": "success"}).encode('utf-8'))
                 else:
                     conn.send(json.dumps({"status": "failed", "msg": "Invalid credentials"}).encode('utf-8'))
 
@@ -174,7 +179,15 @@ def threaded_client(conn):
             # --- 5. HOST CLICKS "START GAME" ---
             elif action == 'start_game':
                 if my_lobby_code in active_lobbies:
-                    active_lobbies[my_lobby_code]["started"] = True
+                    lobby = active_lobbies[my_lobby_code]
+                    lobby["started"] = True
+
+                    # NEW: Split starting cash evenly based on player count
+                    num_players = len(lobby['players'])
+                    starting_pool = lobby["state"]["cash"]
+                    # Create a dictionary mapping Player ID -> Wallet
+                    lobby["state"]["player_cash"] = {i + 1: starting_pool // num_players for i in range(num_players)}
+
                     conn.send(json.dumps({"status": "success", "action": "launch_game"}).encode('utf-8'))
                     game_started = True
 
@@ -204,15 +217,24 @@ def threaded_client(conn):
                 if data["type"] == "place_tower":
                     new_tower = data["tower_data"]
                     cost = new_tower.get("cost", 150)
-                    if game_state["cash"] >= cost:
+                    if game_state.get("player_cash", {}).get(player_id, 0) >= cost:
                         new_tower["id"] = game_state["tower_id_counter"]
                         new_tower["owner"] = player_id
                         game_state["towers"].append(new_tower)
                         game_state["tower_id_counter"] += 1
-                        game_state["cash"] -= cost
+                        game_state["player_cash"][player_id] -= cost
+
+                elif data["type"] == "sell_tower":
+                    if "new_cash" in data:
+                        game_state["player_cash"][player_id] = data["new_cash"]
+                    for t in game_state["towers"]:
+                        if t["id"] == data["tower_id"] and t.get("owner") == player_id:
+                            game_state["towers"].remove(t)
+                            break
+
                 elif data["type"] == "sync_upgrade":
                     if "new_cash" in data:
-                        game_state["cash"] = data["new_cash"]
+                        game_state["player_cash"][player_id] = data["new_cash"]
                     for t in game_state["towers"]:
                         if t["id"] == data["tower_id"] and t.get("owner") == player_id:
                             if "path_left" in data: t["path_left"] = data["path_left"]
@@ -251,6 +273,10 @@ def threaded_client(conn):
         if len(active_lobbies[my_lobby_code]['players']) == 0:
             del active_lobbies[my_lobby_code]
             print(f"Closed empty lobby {my_lobby_code}")
+
+    if username in online_users:
+        del online_users[username]
+        print(f"{username} has gone offline.")
     conn.close()
 
 
@@ -265,7 +291,20 @@ def master_game_loop():
             lobby = active_lobbies.get(lobby_code)
             if lobby:
                 # Update this specific lobby's game state
+                old_global_cash = lobby["state"]["cash"]
+
                 game_logic.update_game_state(lobby["state"])
+                if lobby.get("started") and "player_cash" in lobby["state"]:
+                    new_global_cash = lobby["state"]["cash"]
+                    # If game_logic.py increased the global cash...
+                    if new_global_cash > old_global_cash:
+                        gained = new_global_cash - old_global_cash
+                        num_players = len(lobby["players"])
+                        split_amount = gained / num_players
+
+                        # Divide it out to all players in the lobby!
+                        for pid in lobby["state"]["player_cash"]:
+                            lobby["state"]["player_cash"][pid] += split_amount
 
         time.sleep(1 / 60)
 

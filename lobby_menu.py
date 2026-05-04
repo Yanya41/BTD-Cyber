@@ -5,9 +5,11 @@ import os
 class LobbyMenu:
     def __init__(self, screen):
         self.screen = screen
+        self.MineFont = os.path.join('Fonts', 'MineFont.ttf')
+        self.ProjectFont = os.path.join('Fonts', 'ProjectFont.otf')
         self.font = pygame.font.Font(None, 50)
-        self.title_font = pygame.font.Font(None, 80)
-        self.small_font = pygame.font.Font(None, 35)
+        self.title_font = pygame.font.Font(self.MineFont, 80)
+        self.small_font = pygame.font.Font(self.ProjectFont, 35)
 
         self.code = ""
         self.password = ""
@@ -27,7 +29,7 @@ class LobbyMenu:
         self.btn_join_rect = pygame.Rect(400, 650, 180, 70)
 
         # Refresh Button for the RIGHT side
-        self.btn_refresh_rect = pygame.Rect(1000, 200, 200, 50)
+        self.btn_refresh_rect = pygame.Rect(1000, 185, 200, 35)
 
     def update_server_list(self, lobbies):
         """Called by client.py when the server sends the lobby list."""
@@ -70,7 +72,7 @@ class LobbyMenu:
         self.screen.blit(self.font.render("Active Servers", True, (255, 255, 255)), (list_x, list_y - 60))
         pygame.draw.rect(self.screen, (100, 100, 100), self.btn_refresh_rect)
         self.screen.blit(self.small_font.render("Refresh List", True, (255, 255, 255)),
-                         (self.btn_refresh_rect.x + 30, self.btn_refresh_rect.y + 15))
+                         (self.btn_refresh_rect.x +5, self.btn_refresh_rect.y -2))
 
         # Clear old clickable rects
         self.server_rects = []
@@ -81,7 +83,7 @@ class LobbyMenu:
 
         for i, server in enumerate(self.server_list):
             # Create a background box for each server in the list
-            row_rect = pygame.Rect(list_x, list_y + (i * 70), 500, 60)
+            row_rect = pygame.Rect(list_x, list_y + (i * 70), 650, 60)
             pygame.draw.rect(self.screen, (40, 40, 40), row_rect)
             pygame.draw.rect(self.screen, (255, 215, 0), row_rect, 2)  # Gold border
 
@@ -90,7 +92,7 @@ class LobbyMenu:
             display_text = f"{lock_text}Lobby: {server['code']}  |  Players: {server['players']}/2"
 
             self.screen.blit(self.small_font.render(display_text, True, (255, 255, 255)),
-                             (row_rect.x + 20, row_rect.y + 20))
+                             (row_rect.x + 20, row_rect.y + 10))
 
             # Save this rectangle and its code so handle_event knows what we clicked!
             self.server_rects.append((row_rect, server['code']))
