@@ -99,6 +99,7 @@ def threaded_client(conn):
                     authenticated = True  # Auto-login after registering
                     username = user
                     conn.send(json.dumps({"status": "success"}).encode('utf-8'))
+                    online_users[user] = conn
                 else:
                     conn.send(json.dumps({"status": "failed", "msg": "Username already taken!"}).encode('utf-8'))
 
