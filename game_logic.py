@@ -58,17 +58,23 @@ def update_towers(game_state):
     now = time.time() * 1000
 
     for t in game_state["towers"]:
+        p_left = t.get("path_left", 0)
+        p_right = t.get("path_right", 0)
+
         if t["tower_type"] == "goku":
-            cooldown = 1500 - (t.get("path_left", 0) * 200)
-            attack_range = 250
+            # Matches Goku.get_stats()
+            cooldown = t.get("base_speed", 1500) - (200 if p_left >= 1 else 0)
+            attack_range = t.get("base_range", 250)
 
         elif t["tower_type"] == "ayanokoji":
-            cooldown = 2000 - (t.get("path_right", 0) * 150)
-            attack_range = 300 + (t.get("path_right", 0) * 50)
+            # Matches Ayanokoji.get_stats()
+            cooldown = t.get("base_speed", 2000) - (p_right * 150)
+            attack_range = t.get("base_range", 300) + (p_right * 50)
 
         else:  # archer
-            cooldown = 1000 - (t.get("path_left", 0) * 100)
-            attack_range = 1000
+            # Matches Archer.get_stats()
+            cooldown = t.get("base_speed", 1000) - (200 if p_left >= 1 else 0)
+            attack_range = t.get("base_range", 1000)
 
         # Scan for enemies in range
         target = None

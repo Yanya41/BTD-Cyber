@@ -185,7 +185,6 @@ class Archer(Tower):
         self.left_names = ["Stronger", "Powerful", "UBW"]
         self.right_names = ["Faster", "Bigger", "EXPLOSION"]
 
-        # FIX: Images loaded once here, not every draw() call
         self.idle_img = pygame.image.load(os.path.join("Images", "archer_idle.png")).convert_alpha()
         self.shoot_img = pygame.image.load(os.path.join("Images", "archer_shoot.png")).convert_alpha()
 
