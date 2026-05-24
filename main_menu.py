@@ -74,14 +74,10 @@ class MainMenu:
         return None
 
     def draw_styled_text(self, text, font, color, pos, shadow_color): # Changed shadow to black so it shows up against the white!
-        # --- 1. Draw the Shadow ---
         shadow_surf = font.render(text, True, shadow_color)
-        # Create a rect and set its center to the position you passed in, plus a tiny offset
         shadow_rect = shadow_surf.get_rect(center=(pos[0] + 4, pos[1] + 4))
         self.screen.blit(shadow_surf, shadow_rect)
 
-        # --- 2. Draw the Main Text ---
         text_surf = font.render(text, True, color)
-        # Create a rect and set its center exactly to the position you passed in
         text_rect = text_surf.get_rect(center=pos)
         self.screen.blit(text_surf, text_rect)

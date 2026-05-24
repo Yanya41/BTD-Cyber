@@ -6,19 +6,15 @@ class InLobbyMenu:
     def __init__(self, screen):
         self.screen = screen
 
-        # --- FIX: Match the custom fonts used in your other menus ---
         self.MineFont = os.path.join('Fonts', 'MineFont.ttf')
         self.ProjectFont = os.path.join('Fonts', 'ProjectFont.otf')
 
-        # We load them gracefully. If they fail for some reason, we'll crash nicely.
         self.font = pygame.font.Font(self.ProjectFont, 50)
         self.title_font = pygame.font.Font(self.MineFont, 80)
 
-        # --- FIX: Use os.path.join for cross-platform compatibility ---
         self.background = pygame.image.load(os.path.join("Images", "background.jpg")).convert()
         self.background = pygame.transform.scale(self.background, (1920, 1080))
 
-        # Center the button near the bottom of a 1080p screen
         self.start_button_rect = pygame.Rect(0,0, 400, 100)
         self.start_button_rect.center = (screen.get_width() // 2, 850)
 
@@ -49,7 +45,6 @@ class InLobbyMenu:
         # Draw the Player List
         start_y = 300
         for index, player in enumerate(self.players):
-            # --- FIX: Extra defense in case the list contains corrupted data ---
             if isinstance(player, dict):
                 name = player.get("username", "Unknown")
                 # Add a "(Host)" tag if they are the admin

@@ -18,14 +18,12 @@ class LoginMenu:
         self.background = pygame.image.load(os.path.join("Images", "background.jpg")).convert()
         self.background = pygame.transform.scale(self.background, (1920, 1080))
 
-        # UI Rectangles: Centered on a 1920x1080 screen
         center_x = self.screen.get_width() // 2
         self.user_rect = pygame.Rect(center_x - 200, 400, 400, 60)
         self.pass_rect = pygame.Rect(center_x - 200, 550, 400, 60)
         self.btn_login_rect = pygame.Rect(center_x - 220, 700, 200, 70)
         self.btn_register_rect = pygame.Rect(center_x + 20, 700, 200, 70)
 
-        # --- FIX: Initialize go_back_rect safely here to avoid crashes if clicked early ---
         self.go_back_rect = pygame.Rect(self.screen.get_width() // 4 - 100, 175, 200, 50)
 
     def draw(self):

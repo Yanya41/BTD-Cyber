@@ -76,7 +76,6 @@ class ErrorPopup:
         self.box_height = 0
 
     def trigger(self, msg):
-        """Call this to make the popup appear."""
         self.message = msg
         self.active = True
         self.start_time = pygame.time.get_ticks()
@@ -87,13 +86,11 @@ class ErrorPopup:
         self.box_height = self.text_surface.get_height() + 40
 
     def draw(self, screen):
-        """Call this every frame in your draw loop."""
         if self.active:
             if pygame.time.get_ticks() - self.start_time > self.duration:
                 self.active = False
                 return
 
-            # Math for perfectly centering the box
             x = (1920 // 2) - (self.box_width // 2)
             y = 150
 
@@ -174,7 +171,6 @@ while running:
                         n.wait_for_game_start()
                         current_state = "PLAYING_GAME"
 
-        # --- NEW: YOUR ACTUAL GAMEPLAY EVENTS ---
         elif current_state == "PLAYING_GAME":
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = m_pos

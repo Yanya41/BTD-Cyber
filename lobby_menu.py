@@ -43,7 +43,6 @@ class LobbyMenu:
         title_surf = self.title_font.render("Multiplayer Lobbies", True, (255, 215, 0))
         self.screen.blit(title_surf, (self.screen.get_width() // 2 - title_surf.get_width() // 2, 100))
 
-        # --- LEFT SIDE: Manual Entry ---
         color_active = (255, 215, 0)
         color_inactive = (150, 150, 150)
 
@@ -67,7 +66,6 @@ class LobbyMenu:
         self.screen.blit(self.font.render("Join", True, (0, 0, 0)),
                          (self.btn_join_rect.x + 60, self.btn_join_rect.y + 15))
 
-        # --- RIGHT SIDE: Server Browser ---
         list_x = 1000
         list_y = 300
 
@@ -78,7 +76,6 @@ class LobbyMenu:
 
         self.server_rects = []
 
-        # --- FIX: Safely parse to avoid crashing if server list is broken ---
         if not self.server_list:
             self.screen.blit(self.small_font.render("No active lobbies found. Create one!", True, (200, 200, 200)),
                              (list_x, list_y))
@@ -91,7 +88,6 @@ class LobbyMenu:
                     pygame.draw.rect(self.screen, (255, 215, 0), row_rect, 2)
 
                     lock_text = "[LOCKED] " if server.get("locked") else ""
-                    # Uses .get() with defaults just in case keys are missing
                     code_val = server.get('code', '???')
                     players_val = server.get('players', '?')
 

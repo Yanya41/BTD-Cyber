@@ -252,7 +252,6 @@ def threaded_client(conn):
                     new_tower = data["tower_data"]
                     tower_type = new_tower.get("tower_type")
 
-                    # Server looks up cost — client cannot spoof this
                     cost = TOWER_COSTS.get(tower_type, 999999)
 
                     if game_state.get("player_cash", {}).get(player_id, 0) >= cost:
@@ -319,8 +318,6 @@ def threaded_client(conn):
             del active_lobbies[my_lobby_code]
             print(f"Closed empty lobby {my_lobby_code}")
 
-    # FIX: Only delete from online_users if the connection matches
-    # so a reconnect doesn't accidentally wipe the new session
     if username and online_users.get(username) == conn:
         del online_users[username]
         print(f"{username} has gone offline.")
