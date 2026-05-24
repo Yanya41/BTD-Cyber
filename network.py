@@ -1,6 +1,7 @@
 import socket
 import pickle
 import json
+import struct
 
 
 class Network:
@@ -25,17 +26,57 @@ class Network:
             print(f"Connection Error: {e}")
 
     # ==========================================
+    # TCP FRAMING HELPERS (Match server.py)
+    # ==========================================
+    def _send_msg(self, data: bytes):
+        """Send data with a 4-byte length header (matches server)"""
+        try:
+            header = struct.pack('>I', len(data))
+            self.client.sendall(header + data)
+        except Exception as e:
+            print(f"Send Error: {e}")
+
+    def _recv_msg(self):
+        """Receive data with a 4-byte length header (matches server)"""
+        try:
+            raw_header = self._recv_exactly(4)
+            if not raw_header:
+                return None
+            length = struct.unpack('>I', raw_header)[0]
+            return self._recv_exactly(length)
+        except Exception as e:
+            print(f"Receive Error: {e}")
+            return None
+
+    def _recv_exactly(self, n: int):
+        """Receive exactly n bytes"""
+        buf = b""
+        while len(buf) < n:
+            try:
+                chunk = self.client.recv(n - len(buf))
+                if not chunk:
+                    return None
+                buf += chunk
+            except Exception as e:
+                print(f"Recv Exactly Error: {e}")
+                return None
+        return buf
+
+    # ==========================================
     # PHASE 1 & 2: JSON (Menus & Lobbies)
     # ==========================================
     def send_json(self, data):
         """Sends a dict to server as JSON and returns the JSON response."""
         try:
-            self.client.send(json.dumps(data).encode('utf-8'))
-            response = self.client.recv(4096).decode('utf-8')
+            self._send_msg(json.dumps(data).encode('utf-8'))
+            response = self._recv_msg()
             if response:
-                return json.loads(response)
+                return json.loads(response.decode('utf-8'))
             return None
-        except socket.error as e:
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON response from server: {e}")
+            return None
+        except Exception as e:
             print(f"Network JSON Error: {e}")
             return None
 
@@ -48,7 +89,10 @@ class Network:
         It catches the initial pickle state the server sends.
         """
         try:
-            init_data = pickle.loads(self.client.recv(65536))
+            data = self._recv_msg()
+            if not data:
+                return False
+            init_data = pickle.loads(data)
             self.player_id = init_data["id"]
             self.initial_state = init_data["state"]
             print(f"Game Initialized! I am Player {self.player_id}")
@@ -58,35 +102,25 @@ class Network:
             return False
 
     def send_action(self, data):
-        self.client.send(pickle.dumps(data))
-
-        # --- NEW: Robust Packet Assembly ---
-        packet = b""
-        while True:
-            chunk = self.client.recv(65536)
-            if not chunk:
-                return None
-
-            packet += chunk  # Glue the new chunk to the existing data
-
-            try:
-                # If the packet is whole, it works and escapes the loop!
-                return pickle.loads(packet)
-            except Exception:
-                # If the packet is chopped in half, it fails safely,
-                # loops back to the top, and waits for the missing half!
-                pass
+        """Send an action and receive game state response"""
+        try:
+            self._send_msg(pickle.dumps(data))
+            response = self._recv_msg()
+            if response:
+                return pickle.loads(response)
+            return None
+        except Exception as e:
+            print(f"Send Action Error: {e}")
+            return None
 
     def get_state(self):
         """Requests the current game state from the server."""
-        self.client.send(pickle.dumps({"type": "get_state"}))
-        packet = b""
-        while True:
-            chunk = self.client.recv(65536)
-            if not chunk:
-                return None
-            packet += chunk
-            try:
-                return pickle.loads(packet)
-            except Exception:
-                pass
+        try:
+            self._send_msg(pickle.dumps({"type": "get_state"}))
+            response = self._recv_msg()
+            if response:
+                return pickle.loads(response)
+            return None
+        except Exception as e:
+            print(f"Get State Error: {e}")
+            return None

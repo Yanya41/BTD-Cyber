@@ -15,25 +15,27 @@ class LobbyMenu:
         self.password = ""
         self.active_box = 0
 
-        # --- NEW: Server List Data ---
-        self.server_list = []  # Will hold dicts from the server
-        self.server_rects = []  # Will hold clickable hitboxes for the UI
+        self.server_list = []
+        self.server_rects = []
 
         self.background = pygame.image.load(os.path.join("Images", "background.jpg")).convert()
         self.background = pygame.transform.scale(self.background, (1920, 1080))
 
-        # Move Inputs to the LEFT side of the screen (X = 200)
         self.code_rect = pygame.Rect(200, 350, 400, 60)
         self.pass_rect = pygame.Rect(200, 500, 400, 60)
         self.btn_create_rect = pygame.Rect(200, 650, 180, 70)
         self.btn_join_rect = pygame.Rect(400, 650, 180, 70)
-
-        # Refresh Button for the RIGHT side
         self.btn_refresh_rect = pygame.Rect(1000, 185, 200, 35)
 
     def update_server_list(self, lobbies):
-        """Called by client.py when the server sends the lobby list."""
-        self.server_list = lobbies
+        """Safely extract the list regardless of what the client passes."""
+        if isinstance(lobbies, dict):
+            # If client passed the raw JSON dict, grab the lobbies list
+            self.server_list = lobbies.get("lobbies", [])
+        elif isinstance(lobbies, list):
+            self.server_list = lobbies
+        else:
+            self.server_list = []
 
     def draw(self):
         self.screen.blit(self.background, (0, 0))
@@ -72,32 +74,33 @@ class LobbyMenu:
         self.screen.blit(self.font.render("Active Servers", True, (255, 255, 255)), (list_x, list_y - 60))
         pygame.draw.rect(self.screen, (100, 100, 100), self.btn_refresh_rect)
         self.screen.blit(self.small_font.render("Refresh List", True, (255, 255, 255)),
-                         (self.btn_refresh_rect.x +5, self.btn_refresh_rect.y -2))
+                         (self.btn_refresh_rect.x + 5, self.btn_refresh_rect.y - 2))
 
-        # Clear old clickable rects
         self.server_rects = []
 
+        # --- FIX: Safely parse to avoid crashing if server list is broken ---
         if not self.server_list:
             self.screen.blit(self.small_font.render("No active lobbies found. Create one!", True, (200, 200, 200)),
                              (list_x, list_y))
+        else:
+            for i, server in enumerate(self.server_list):
+                # Extra layer of defense in case the array accidentally contains a string
+                if isinstance(server, dict):
+                    row_rect = pygame.Rect(list_x, list_y + (i * 70), 650, 60)
+                    pygame.draw.rect(self.screen, (40, 40, 40), row_rect)
+                    pygame.draw.rect(self.screen, (255, 215, 0), row_rect, 2)
 
-        for i, server in enumerate(self.server_list):
-            # Create a background box for each server in the list
-            row_rect = pygame.Rect(list_x, list_y + (i * 70), 650, 60)
-            pygame.draw.rect(self.screen, (40, 40, 40), row_rect)
-            pygame.draw.rect(self.screen, (255, 215, 0), row_rect, 2)  # Gold border
+                    lock_text = "[LOCKED] " if server.get("locked") else ""
+                    # Uses .get() with defaults just in case keys are missing
+                    code_val = server.get('code', '???')
+                    players_val = server.get('players', '?')
 
-            # Text inside the box
-            lock_text = "[LOCKED] " if server.get("locked") else ""
-            display_text = f"{lock_text}Lobby: {server['code']}  |  Players: {server['players']}/2"
+                    display_text = f"{lock_text}Lobby: {code_val}  |  Players: {players_val}/4"
 
-            self.screen.blit(self.small_font.render(display_text, True, (255, 255, 255)),
-                             (row_rect.x + 20, row_rect.y + 10))
+                    self.screen.blit(self.small_font.render(display_text, True, (255, 255, 255)),
+                                     (row_rect.x + 20, row_rect.y + 10))
 
-            # Save this rectangle and its code so handle_event knows what we clicked!
-            self.server_rects.append((row_rect, server['code']))
-
-        pygame.display.flip()
+                    self.server_rects.append((row_rect, code_val))
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -107,20 +110,18 @@ class LobbyMenu:
             elif self.pass_rect.collidepoint(mouse_pos):
                 self.active_box = 2
             elif self.btn_create_rect.collidepoint(mouse_pos):
-                return {"action": "create_lobby", "password": self.password}
+                if self.code == "":
+                    return {"action": "create_lobby", "password": self.password}
             elif self.btn_join_rect.collidepoint(mouse_pos):
                 return {"action": "join_lobby", "code": self.code, "password": self.password}
             elif self.btn_refresh_rect.collidepoint(mouse_pos):
                 return {"action": "refresh_lobbies"}
-
-            # --- NEW: Check if they clicked a server in the list ---
             else:
                 self.active_box = 0
                 for rect, clicked_code in self.server_rects:
                     if rect.collidepoint(mouse_pos):
-                        # If clicked, auto-fill the code box so they can just type a password if needed!
                         self.code = clicked_code
-                        self.active_box = 2  # Automatically focus the password box
+                        self.active_box = 2
                         break
 
         elif event.type == pygame.KEYDOWN:

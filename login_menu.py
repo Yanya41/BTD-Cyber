@@ -25,6 +25,9 @@ class LoginMenu:
         self.btn_login_rect = pygame.Rect(center_x - 220, 700, 200, 70)
         self.btn_register_rect = pygame.Rect(center_x + 20, 700, 200, 70)
 
+        # --- FIX: Initialize go_back_rect safely here to avoid crashes if clicked early ---
+        self.go_back_rect = pygame.Rect(self.screen.get_width() // 4 - 100, 175, 200, 50)
+
     def draw(self):
         self.screen.blit(self.background, (0, 0))
 
@@ -39,11 +42,10 @@ class LoginMenu:
         user_color = color_active if self.active_box == 1 else color_inactive
         pass_color = color_active if self.active_box == 2 else color_inactive
 
-        #go back button
+        # Go back button
         go_back_text = self.font.render("Go Back", True, (255, 255, 255))
         self.go_back_rect = go_back_text.get_rect(center=(self.screen.get_width() // 4, 200))
         self.screen.blit(go_back_text, self.go_back_rect)
-
 
         # Draw Input Boxes
         pygame.draw.rect(self.screen, user_color, self.user_rect, 3)
@@ -82,8 +84,6 @@ class LoginMenu:
                 self.active_box = 2
             elif self.go_back_rect.collidepoint(mouse_pos):
                 return {"action": "go_back"}
-
-            # --- NEW: Handle both clicks ---
             elif self.btn_login_rect.collidepoint(mouse_pos):
                 return {"action": "login", "user": self.username, "password": self.password}
             elif self.btn_register_rect.collidepoint(mouse_pos):
@@ -92,29 +92,19 @@ class LoginMenu:
                 self.active_box = 0
 
         elif event.type == pygame.KEYDOWN:
-            # 1. Handle Enter Key (Submit form)
             if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 return {"action": "login", "user": self.username, "password": self.password}
-
-            # 2. Handle Tab Key (Switch between input boxes)
             elif event.key == pygame.K_TAB:
-                if self.active_box == 1:
-                    self.active_box = 2
-                else:
-                    self.active_box = 1
-
-            # 3. Handle Typing in Username Box
+                self.active_box = 2 if self.active_box == 1 else 1
             elif self.active_box == 1:
                 if event.key == pygame.K_BACKSPACE:
                     self.username = self.username[:-1]
-                elif event.unicode.isprintable():  # <-- The fix!
+                elif event.unicode.isprintable():
                     self.username += event.unicode
-
-            # 4. Handle Typing in Password Box
             elif self.active_box == 2:
                 if event.key == pygame.K_BACKSPACE:
                     self.password = self.password[:-1]
-                elif event.unicode.isprintable():  # <-- The fix!
+                elif event.unicode.isprintable():
                     self.password += event.unicode
 
         return None

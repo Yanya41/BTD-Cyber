@@ -15,8 +15,8 @@ from network import Network
 from map import MapBackground, SideMenu, UiManager, UpgradePanel, Abilities, get_tower, is_on_path, is_overlapping_tower
 from game_data import Data
 from rounds import Round
-from towers import TowerManager
-from skeleton_rounds import Skeleton, ShieldedSkeleton, SkeletonBarrel
+from towers import TowerManager, ManipulationProjectile, Kamehameha, Explosion
+from skeleton_rounds import Skeleton, ShieldedSkeleton, SkeletonBarrel, TurnedSkeleton
 
 if load_assets.check_files_exist():
     print("Missing assets, exiting.")
@@ -53,6 +53,7 @@ tower_manager = TowerManager()
 placed_towers = []
 dragging_tower = None
 selected_tower = None
+turned_enemies = []
 abilities = Abilities(pygame.font.Font(MineFont, 20), placed_towers)
 
 current_state = "MAIN_MENU"
@@ -100,7 +101,6 @@ class ErrorPopup:
             pygame.draw.rect(screen, (150, 0, 0), (x, y, self.box_width, self.box_height), border_radius=10)
             pygame.draw.rect(screen, (255, 50, 50), (x, y, self.box_width, self.box_height), 3, border_radius=10)
 
-            # Draw the pre-rendered text surface (super fast!)
             screen.blit(self.text_surface, (x + 20, y + 20))
 
 error_popup = ErrorPopup()
@@ -128,14 +128,20 @@ while running:
                     current_state = "MAIN_MENU"
                 elif action.get("action") in ["login", "register"]:
                     if action.get("user") != '' and action.get("password") != '':
-                        response = n.send_json(action)
-                        if response and response.get("status") == "success":
-                            username = action.get("user")
-                            current_state = "LOBBY_SELECT"
-                        else:
-                            error_msg = response.get("msg") if response else "Server offline."
-                            print(f"Failed: {error_msg}")
-                            error_popup.trigger(error_msg)
+                        try:
+                            response = n.send_json(action)
+                            if response and response.get("status") == "success":
+                                username = action.get("user")
+                                current_state = "LOBBY_SELECT"
+                            else:
+                                error_msg = response.get("msg") if response else "Server offline."
+                                print(f"Failed: {error_msg}")
+                                error_popup.trigger(error_msg)
+                        except Exception as e:
+                            print(f"Login Error: {e}")
+                            error_popup.trigger(f"Login Error: {str(e)}")
+                    else:
+                        error_popup.trigger("Username and password required!")
 
         elif current_state == "LOBBY_SELECT":
             action = lobby_menu.handle_event(event)
@@ -203,6 +209,8 @@ while running:
                     if game_data.current_cash >= 550: dragging_tower = "goku"
                 elif 1620 <= mx <= 1920 and 350 <= my <= 450:
                     if game_data.current_cash >= 600: dragging_tower = "archer"
+                elif 1620 <= mx <= 1920 and 500 <= my <= 600:
+                    if game_data.current_cash >= 1000: dragging_tower = "ayanokoji"
 
                 # UBW Ability
                 elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
@@ -295,7 +303,6 @@ while running:
             for s_enemy in current_game_state["enemies"]:
                 if s_enemy["id"] not in local_enemy_ids:
 
-                    # --- FIXED: Check the enemy type and spawn the correct class! ---
                     e_type = s_enemy.get("type", "Skeleton")
                     if e_type == "SkeletonBarrel":
                         visual_enemy = SkeletonBarrel()
@@ -316,6 +323,25 @@ while running:
                             local_e.x = s_enemy["x"]
                             local_e.y = s_enemy["y"]
                             local_e.hp = s_enemy["hp"]
+            # --- Sync Turned Skeletons ---
+            server_turned = current_game_state.get("turned_enemies", [])
+            server_turned_ids = [ts["id"] for ts in server_turned]
+            # Remove ones that disappeared on server
+            turned_enemies = [ts for ts in turned_enemies if ts.id in server_turned_ids]
+            local_turned_ids = [ts.id for ts in turned_enemies]
+            for s_ts in server_turned:
+                if s_ts["id"] not in local_turned_ids:
+                    # Spawn new visual TurnedSkeleton
+                    visual_ts = TurnedSkeleton()
+                    visual_ts.id = s_ts["id"]
+                    visual_ts.x = s_ts["x"]
+                    visual_ts.y = s_ts["y"]
+                    turned_enemies.append(visual_ts)
+                else:
+                    for local_ts in turned_enemies:
+                        if local_ts.id == s_ts["id"]:
+                            local_ts.x = s_ts["x"]
+                            local_ts.y = s_ts["y"]
 
     # ==========================================
     # 3. DRAW CALLS
@@ -339,6 +365,11 @@ while running:
                 e.current_frame = (e.current_frame + 1) % len(e.frames)
                 e.last_update = now
             e.draw(screen)
+        for te in turned_enemies:
+            if te.frames and (now - te.last_update > te.frame_time):
+                te.current_frame = (te.current_frame + 1) % len(te.frames)
+                te.last_update = now
+            te.draw(screen)
 
         # Towers
         for t in placed_towers:
@@ -348,16 +379,16 @@ while running:
         if 'current_game_state' in locals() and current_game_state:
             for p in current_game_state.get("projectiles", []):
                 size = p.get("size", 10)
-                pygame.draw.circle(screen, (173, 216, 230), (int(p["x"]), int(p["y"])), size)
-                pygame.draw.circle(screen, (255, 255, 255), (int(p["x"]), int(p["y"])), size // 2)
+                if p.get("proj_type") == "manipulation":
+                    projectile = ManipulationProjectile(p["x"], p["y"], 0, 0,0,0,0)
+                else:
+                    projectile = Kamehameha(p["x"], p["y"], 0,0,0,p["size"],False,False)
+                projectile.draw(screen)
 
-            for ex in current_game_state.get("explosions", []):
-                timer = ex.get("timer", 10)
-                max_radius = ex.get("max_radius", 50)
-                radius = max_radius * (1 - (timer / 10))
-                if radius > 0:
-                    pygame.draw.circle(screen, (255, 165, 0), (int(ex["x"]), int(ex["y"])), int(radius))
-                    pygame.draw.circle(screen, (255, 255, 255), (int(ex["x"]), int(ex["y"])), int(radius // 2))
+            for ex_data in current_game_state.get("explosions", []):
+                ex = Explosion(ex_data['x'], ex_data['y'], None, 0, ex_data['max_radius'], 0, 0)
+                ex.timer = ex_data.get('timer', 10)
+                ex.draw(screen)
 
         # UI Overlay
         side_menu.draw()
@@ -386,6 +417,7 @@ while running:
             from load_assets import load_image
 
             icon = load_image(get_tower(dragging_tower)[0], alpha=True)
+            icon = pygame.transform.scale(icon, (60,60))
             if icon:
                 rect = icon.get_rect(center=m_pos)
                 screen.blit(icon, rect)
