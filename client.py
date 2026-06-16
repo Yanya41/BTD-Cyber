@@ -102,11 +102,9 @@ class ErrorPopup:
 
 error_popup = ErrorPopup()
 while running:
-    # ==========================================
-    # 1. EVENT HANDLING
-    # ==========================================
     m_pos = pygame.mouse.get_pos()
 
+    # 1. EVENT HANDLING (All inputs MUST live inside this loop)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -181,18 +179,21 @@ while running:
                         if upgrade_panel.btn_left.collidepoint(mx, my):
                             if selected_tower.upgrade_left(game_data, placed_towers):
                                 n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
-                                               "path_left": selected_tower.path_left, "new_cash": game_data.current_cash})
+                                               "path_left": selected_tower.path_left,
+                                               "new_cash": game_data.current_cash})
                         elif upgrade_panel.btn_right.collidepoint(mx, my):
                             if selected_tower.upgrade_right(game_data, placed_towers):
                                 n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
-                                               "path_right": selected_tower.path_right, "new_cash": game_data.current_cash})
+                                               "path_right": selected_tower.path_right,
+                                               "new_cash": game_data.current_cash})
                         elif upgrade_panel.btn_target.collidepoint(mx, my):
                             selected_tower.target_mode = "strong" if selected_tower.target_mode == "first" else "first"
                             n.send_action({"type": "sync_upgrade", "tower_id": selected_tower.id,
                                            "target_mode": selected_tower.target_mode})
                         elif upgrade_panel.btn_sell.collidepoint(mx, my):
                             game_data.current_cash += selected_tower.get_sell_value()
-                            n.send_action({"type": "sell_tower", "tower_id": selected_tower.id, "new_cash": game_data.current_cash})
+                            n.send_action({"type": "sell_tower", "tower_id": selected_tower.id,
+                                           "new_cash": game_data.current_cash})
                             placed_towers.remove(selected_tower)
                             selected_tower = None
 
@@ -212,9 +213,9 @@ while running:
                 elif abilities.btn_ubw and abilities.btn_ubw.collidepoint(mx, my):
                     n.send_action({"type": "ubw"})
 
-                    # Select a tower you own
+                # Select a tower you own
                 else:
-                    selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40),None)
+                    selected_tower = next((t for t in placed_towers if math.hypot(mx - t.x, my - t.y) < 40), None)
 
             if event.type == pygame.MOUSEBUTTONUP:
                 if dragging_tower and m_pos[0] < 1620:
@@ -231,8 +232,21 @@ while running:
                 if event.key == pygame.K_SPACE:
                     n.send_action({"type": "start_round"})
 
+        elif current_state == "WIN_SCREEN":
+            return_btn_rect = pygame.Rect(1920 // 2 - 200, 650, 400, 80)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1 and return_btn_rect.collidepoint(m_pos):
+                    # Request server routing back to the lobby list phase
+                    response = n.send_action({"type": "return_to_lobby"})
+                    # Flush local instances from last playthrough
+                    placed_towers = []
+                    dragging_tower = None
+                    selected_tower = None
+                    turned_enemies = []
+                    current_state = "LOBBY_SELECT"  # Fixed: Now routes straight back to lobby select menu
+
     # ==========================================
-    # 2. CONTINUOUS LOGIC & SYNCING
+    # 2. CONTINUOUS LOGIC & NETWORK SYNCING
     # ==========================================
     if current_state == "IN_LOBBY":
         current_time = pygame.time.get_ticks()
@@ -249,28 +263,36 @@ while running:
 
     elif current_state == "PLAYING_GAME":
         current_game_state = n.get_state()
-
         if current_game_state:
-            # Sync Game Stats
+            # Check if server packet explicitly intercepted a return instruction
+            if isinstance(current_game_state, dict) and current_game_state.get("action") == "back_to_lobby":
+                placed_towers = []
+                dragging_tower = None
+                selected_tower = None
+                turned_enemies = []
+                current_state = "LOBBY_SELECT"  # Fixed: Sync routing back to lobby list
+                continue
+
+            # Switch client display mode to Victory screen if the server reports the round limit is reached
+            if isinstance(current_game_state, dict) and current_game_state.get("game_won", False):
+                current_state = "WIN_SCREEN"
+                continue
+
+            # Sync player wallet currency stats
             if "player_cash" in current_game_state and n.player_id in current_game_state["player_cash"]:
                 game_data.current_cash = current_game_state["player_cash"][n.player_id]
             else:
-                game_data.current_cash = current_game_state.get("cash", 0)  # Fallback
+                game_data.current_cash = current_game_state.get("cash", 0)
             game_data.current_hp = current_game_state["current_hp"]
             round_manager.current_round = current_game_state["current_round"]
 
             # Sync Towers
             active_server_tower_ids = [st["id"] for st in current_game_state["towers"]]
-
-            # --- NEW: 1. Remove towers that were sold/deleted on the server ---
             for local_t in placed_towers[:]:
                 if local_t.id not in active_server_tower_ids:
-                    # If someone was clicking on the tower when it was sold, deselect it
-                    if selected_tower == local_t:
-                        selected_tower = None
+                    if selected_tower == local_t: selected_tower = None
                     placed_towers.remove(local_t)
 
-            # --- 2. Add or update remaining towers ---
             local_tower_ids = [t.id for t in placed_towers]
             for server_tower in current_game_state["towers"]:
                 if server_tower["id"] not in local_tower_ids:
@@ -287,17 +309,15 @@ while running:
                             local_t.target_mode = server_tower.get("target_mode", "first")
                             local_t.angle = server_tower.get("angle", 270)
                             local_t.owner = server_tower.get("owner")
-                            if server_tower.get("just_shot"):
-                                local_t.last_shot_time = pygame.time.get_ticks()
+                            if server_tower.get("just_shot"): local_t.last_shot_time = pygame.time.get_ticks()
 
             # Sync Enemies
             local_enemy_ids = [e.id for e in round_manager.enemies]
             active_server_ids = [se["id"] for se in current_game_state["enemies"]]
-
             round_manager.enemies = [e for e in round_manager.enemies if e.id in active_server_ids]
-
             for s_enemy in current_game_state["enemies"]:
                 if s_enemy["id"] not in local_enemy_ids:
+                    from skeleton_rounds import Skeleton, ShieldedSkeleton, SkeletonBarrel
 
                     e_type = s_enemy.get("type", "Skeleton")
                     if e_type == "SkeletonBarrel":
@@ -306,7 +326,6 @@ while running:
                         visual_enemy = ShieldedSkeleton()
                     else:
                         visual_enemy = Skeleton()
-
                     visual_enemy.id = s_enemy["id"]
                     visual_enemy.x = s_enemy["x"]
                     visual_enemy.y = s_enemy["y"]
@@ -319,15 +338,16 @@ while running:
                             local_e.x = s_enemy["x"]
                             local_e.y = s_enemy["y"]
                             local_e.hp = s_enemy["hp"]
-            # --- Sync Turned Skeletons ---
+
+            # Sync Manipulated/Turned Enemies
             server_turned = current_game_state.get("turned_enemies", [])
             server_turned_ids = [ts["id"] for ts in server_turned]
-            # Remove ones that disappeared on server
             turned_enemies = [ts for ts in turned_enemies if ts.id in server_turned_ids]
             local_turned_ids = [ts.id for ts in turned_enemies]
             for s_ts in server_turned:
                 if s_ts["id"] not in local_turned_ids:
-                    # Spawn new visual TurnedSkeleton
+                    from skeleton_rounds import TurnedSkeleton
+
                     visual_ts = TurnedSkeleton()
                     visual_ts.id = s_ts["id"]
                     visual_ts.x = s_ts["x"]
@@ -350,43 +370,39 @@ while running:
         lobby_menu.draw()
     elif current_state == "IN_LOBBY":
         in_lobby_menu.draw()
-
     elif current_state == "PLAYING_GAME":
         draw_map.draw()
-
-        # Enemies
         now = pygame.time.get_ticks()
+
         for e in round_manager.enemies:
             if e.frames and (now - e.last_update > e.frame_time):
                 e.current_frame = (e.current_frame + 1) % len(e.frames)
                 e.last_update = now
             e.draw(screen)
+
         for te in turned_enemies:
             if te.frames and (now - te.last_update > te.frame_time):
                 te.current_frame = (te.current_frame + 1) % len(te.frames)
                 te.last_update = now
             te.draw(screen)
 
-        # Towers
         for t in placed_towers:
             t.draw(screen, n.player_id)
 
-        # Server-Side Particles
         if 'current_game_state' in locals() and current_game_state:
-            for p in current_game_state.get("projectiles", []):
-                size = p.get("size", 10)
-                if p.get("proj_type") == "manipulation":
-                    projectile = ManipulationProjectile(p["x"], p["y"], 0, 0,0,0,0)
-                else:
-                    projectile = Kamehameha(p["x"], p["y"], 0,0,0,p["size"],False,False)
-                projectile.draw(screen)
+            from towers import ManipulationProjectile, Kamehameha, Explosion
 
+            for p in current_game_state.get("projectiles", []):
+                if p.get("proj_type") == "manipulation":
+                    projectile = ManipulationProjectile(p["x"], p["y"], 0, 0, 0, 0, 0)
+                else:
+                    projectile = Kamehameha(p["x"], p["y"], 0, 0, 0, p["size"], False, False)
+                projectile.draw(screen)
             for ex_data in current_game_state.get("explosions", []):
                 ex = Explosion(ex_data['x'], ex_data['y'], None, 0, ex_data['max_radius'], 0, 0)
                 ex.timer = ex_data.get('timer', 10)
                 ex.draw(screen)
 
-        # UI Overlay
         side_menu.draw()
         ui.draw(game_data, round_manager)
         abilities.draw()
@@ -403,7 +419,10 @@ while running:
         if dragging_tower:
             radius = get_tower(dragging_tower)[1]
             range_surface = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],m_pos[1],placed_towers,50):
+            if not is_on_path(m_pos[0], m_pos[1], game_data.path_points, 50) and not is_overlapping_tower(m_pos[0],
+                                                                                                          m_pos[1],
+                                                                                                          placed_towers,
+                                                                                                          50):
                 pygame.draw.circle(range_surface, (0, 0, 255, 100), (radius, radius), radius)
             else:
                 pygame.draw.circle(range_surface, (255, 0, 0, 100), (radius, radius), radius)
@@ -413,10 +432,25 @@ while running:
             from load_assets import load_image
 
             icon = load_image(get_tower(dragging_tower)[0], alpha=True)
-            icon = pygame.transform.scale(icon, (60,60))
-            if icon:
-                rect = icon.get_rect(center=m_pos)
-                screen.blit(icon, rect)
+            icon = pygame.transform.scale(icon, (60, 60))
+            if icon: screen.blit(icon, icon.get_rect(center=m_pos))
+
+    elif current_state == "WIN_SCREEN":
+        screen.fill((15, 35, 15))  # Dark green victory landscape theme
+        win_title_font = pygame.font.Font(MineFont, 90)
+        win_btn_font = pygame.font.Font(MineFont, 35)
+
+        title_surf = win_title_font.render("VICTORY!", True, (255, 215, 0))
+        title_rect = title_surf.get_rect(center=(1920 // 2, 400))
+        screen.blit(title_surf, title_rect)
+
+        # "Return to Lobby List" button interface bounds
+        return_btn_rect = pygame.Rect(1920 // 2 - 200, 650, 400, 80)
+        pygame.draw.rect(screen, (50, 180, 50), return_btn_rect, border_radius=12)
+        pygame.draw.rect(screen, (255, 255, 255), return_btn_rect, 3, border_radius=12)
+
+        btn_text = win_btn_font.render("Return to Lobbies", True, (255, 255, 255))
+        screen.blit(btn_text, btn_text.get_rect(center=return_btn_rect.center))
 
     error_popup.draw(screen)
     pygame.display.flip()

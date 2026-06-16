@@ -48,7 +48,8 @@ def get_initial_game_state():
         "last_spawn_time": 0,
         "spawn_queue": [],
         "current_hp": Data().starting_hp,
-        "abilities": {"ubw_cooldown": 0}
+        "abilities": {"ubw_cooldown": 0},
+        "game_won": False
     }
 
 
@@ -105,6 +106,28 @@ def recv_pickle(conn):
 # CLIENT THREAD
 # ==========================================
 
+# server.py
+
+def get_initial_game_state():
+    from game_data import Data
+    return {
+        "towers": [],
+        "enemies": [],
+        "projectiles": [],
+        "explosions": [],
+        "turned_enemies": [],
+        "cash": Data().starting_cash,
+        "tower_id_counter": 0,
+        "current_round": 1,
+        "round_started": False,
+        "last_spawn_time": 0,
+        "spawn_queue": [],
+        "current_hp": Data().starting_hp,
+        "abilities": {"ubw_cooldown": 0},
+        "game_won": False  # New tracking flag
+    }
+
+
 def threaded_client(conn):
     authenticated = False
     my_lobby_code = None
@@ -152,164 +175,196 @@ def threaded_client(conn):
             break
 
     # ==========================================
-    # PHASE 2: LOBBY SELECTION & WAITING ROOM
+    # PHASE 2 & 3: LOBBY & GAMEPLAY SESSION WRAPPER
     # ==========================================
-    game_started = False
+    while authenticated:
+        game_started = False
 
-    while authenticated and not game_started:
-        try:
-            packet = recv_json(conn)
-            if not packet:
-                break
-
-            action = packet.get('action')
-
-            if action == 'get_lobbies':
-                lobby_info = [
-                    {
-                        "code": code,
-                        "players": len(lobby['players']),
-                        "locked": bool(lobby['password'])
-                    }
-                    for code, lobby in active_lobbies.items()
-                ]
-                send_json(conn, {"status": "success", "lobbies": lobby_info})
-
-            elif action == 'create_lobby':
-                code = generate_lobby_code()
-                active_lobbies[code] = {
-                    "password": packet.get('password', ''),
-                    "players": [conn],
-                    "usernames": [username],
-                    "state": get_initial_game_state(),
-                    "started": False,
-                    "last_tick": time.time()
-                }
-                my_lobby_code = code
-                player_id = 1
-                send_json(conn, {"status": "success", "code": code})
-
-            elif action == 'join_lobby':
-                code = packet.get('code', '')
-                pwd = packet.get('password', '')
-
-                if code in active_lobbies and active_lobbies[code]['password'] == pwd:
-                    if len(active_lobbies[code]['players']) < 4:
-                        active_lobbies[code]['players'].append(conn)
-                        active_lobbies[code]['usernames'].append(username)
-                        my_lobby_code = code
-                        player_id = len(active_lobbies[code]['players'])
-                        send_json(conn, {"status": "success", "code": code})
-                    else:
-                        send_json(conn, {"status": "failed", "msg": "Lobby Full"})
-                else:
-                    send_json(conn, {"status": "failed", "msg": "Invalid Code/Password"})
-
-            elif action == 'lobby_ping':
-                if my_lobby_code in active_lobbies:
-                    lobby = active_lobbies[my_lobby_code]
-                    if lobby["started"]:
-                        send_json(conn, {"status": "success", "action": "launch_game"})
-                        game_started = True
-                    else:
-                        send_json(conn, {"status": "success", "players": lobby["usernames"]})
-
-            elif action == 'start_game':
-                if my_lobby_code in active_lobbies:
-                    lobby = active_lobbies[my_lobby_code]
-                    lobby["started"] = True
-
-                    num_players = len(lobby['players'])
-                    starting_pool = lobby["state"]["cash"]
-                    lobby["state"]["player_cash"] = {
-                        i + 1: starting_pool // num_players for i in range(num_players)
-                    }
-
-                    send_json(conn, {"status": "success", "action": "launch_game"})
-                    game_started = True
-
-        except Exception as e:
-            print("Lobby Error:", e)
-            break
-
-    # ==========================================
-    # PHASE 3: THE GAME LOOP
-    # ==========================================
-    if game_started:
-        time.sleep(0.1)
-        my_game_state = active_lobbies[my_lobby_code]["state"]
-        send_pickle(conn, {"id": player_id, "state": my_game_state})
-
-        while True:
+        # PHASE 2: LOBBY SELECTION & WAITING ROOM (JSON)
+        while authenticated and not game_started:
             try:
-                data = recv_pickle(conn)
-                if not data:
+                packet = recv_json(conn)
+                if not packet:
+                    authenticated = False
                     break
 
-                game_state = active_lobbies[my_lobby_code]["state"]
+                action = packet.get('action')
 
-                if data["type"] == "place_tower":
-                    new_tower = data["tower_data"]
-                    tower_type = new_tower.get("tower_type")
+                if action == 'get_lobbies':
+                    lobby_info = [
+                        {
+                            "code": code,
+                            "players": len(lobby['players']),
+                            "locked": bool(lobby['password'])
+                        }
+                        for code, lobby in active_lobbies.items()
+                    ]
+                    send_json(conn, {"status": "success", "lobbies": lobby_info})
 
-                    cost = TOWER_COSTS.get(tower_type, 999999)
+                elif action == 'create_lobby':
+                    code = generate_lobby_code()
+                    active_lobbies[code] = {
+                        "password": packet.get('password', ''),
+                        "players": [conn],
+                        "usernames": [username],
+                        "state": get_initial_game_state(),
+                        "started": False,
+                        "last_tick": time.time()
+                    }
+                    my_lobby_code = code
+                    player_id = 1
+                    send_json(conn, {"status": "success", "code": code})
 
-                    if game_state.get("player_cash", {}).get(player_id, 0) >= cost:
-                        new_tower["id"] = game_state["tower_id_counter"]
-                        new_tower["owner"] = player_id
-                        new_tower["cost"] = cost  # Overwrite with real value
-                        game_state["towers"].append(new_tower)
-                        game_state["tower_id_counter"] += 1
-                        game_state["player_cash"][player_id] -= cost
+                elif action == 'join_lobby':
+                    code = packet.get('code', '')
+                    pwd = packet.get('password', '')
 
-                elif data["type"] == "sell_tower":
-                    if "new_cash" in data:
-                        game_state["player_cash"][player_id] = data["new_cash"]
-                    for t in game_state["towers"]:
-                        if t["id"] == data["tower_id"] and t.get("owner") == player_id:
-                            game_state["towers"].remove(t)
-                            break
+                    if code in active_lobbies and active_lobbies[code]['password'] == pwd:
+                        if len(active_lobbies[code]['players']) < 4:
+                            active_lobbies[code]['players'].append(conn)
+                            active_lobbies[code]['usernames'].append(username)
+                            my_lobby_code = code
+                            player_id = len(active_lobbies[code]['players'])
+                            send_json(conn, {"status": "success", "code": code})
+                        else:
+                            send_json(conn, {"status": "failed", "msg": "Lobby Full"})
+                    else:
+                        send_json(conn, {"status": "failed", "msg": "Invalid Code/Password"})
 
-                elif data["type"] == "sync_upgrade":
-                    if "new_cash" in data:
-                        game_state["player_cash"][player_id] = data["new_cash"]
-                    for t in game_state["towers"]:
-                        if t["id"] == data["tower_id"] and t.get("owner") == player_id:
-                            if "path_left" in data: t["path_left"] = data["path_left"]
-                            if "path_right" in data: t["path_right"] = data["path_right"]
-                            if "target_mode" in data: t["target_mode"] = data["target_mode"]
+                elif action == 'lobby_ping':
+                    if my_lobby_code in active_lobbies:
+                        lobby = active_lobbies[my_lobby_code]
+                        if lobby["started"]:
+                            send_json(conn, {"status": "success", "action": "launch_game"})
+                            game_started = True
+                        else:
+                            send_json(conn, {"status": "success", "players": lobby["usernames"]})
 
-                elif data["type"] == "start_round":
-                    if not game_state["round_started"] and len(game_state["enemies"]) == 0:
-                        from rounds import Round
-                        r = Round()
-                        r.current_round = game_state["current_round"]
-                        r.prepare_round()
-                        game_state["spawn_queue"] = [
-                            (enemy_obj.to_dict(), delay) for enemy_obj, delay in r.spawn_queue
-                        ]
-                        game_state["round_started"] = True
-                        game_state["last_spawn_time"] = time.time() * 1000
+                elif action == 'start_game':
+                    if my_lobby_code in active_lobbies:
+                        lobby = active_lobbies[my_lobby_code]
+                        lobby["started"] = True
 
-                elif data["type"] == "ubw":
-                    if game_state["abilities"]["ubw_cooldown"] == 0:
-                        game_state["abilities"]["ubw_cooldown"] = 900
-                        for e in game_state["enemies"]:
-                            e["hp"] -= 100
-                            game_state["explosions"].append({
-                                "x": e["x"], "y": e["y"],
-                                "timer": 10, "dmg": 0, "max_radius": 70
-                            })
+                        # Authoritative clean reset right before starting a new round instance
+                        lobby["state"] = get_initial_game_state()
 
-                send_pickle(conn, game_state)
+                        num_players = len(lobby['players'])
+                        starting_pool = lobby["state"]["cash"]
+                        lobby["state"]["player_cash"] = {
+                            i + 1: starting_pool // num_players for i in range(num_players)
+                        }
+
+                        send_json(conn, {"status": "success", "action": "launch_game"})
+                        game_started = True
 
             except Exception as e:
-                print(f"Game Loop Error: {e}")
+                print("Lobby Error:", e)
+                authenticated = False
+                break
+
+        if not authenticated:
+            break
+
+        # PHASE 3: THE GAMEPLAY LOOP (PICKLE)
+        if game_started:
+            time.sleep(0.1)
+            my_game_state = active_lobbies[my_lobby_code]["state"]
+            send_pickle(conn, {"id": player_id, "state": my_game_state})
+
+            while game_started:
+                try:
+                    data = recv_pickle(conn)
+                    if not data:
+                        authenticated = False
+                        break
+
+                    game_state = active_lobbies[my_lobby_code]["state"]
+
+                    if data["type"] == "get_state":
+                        pass
+
+                    elif data["type"] == "place_tower":
+                        new_tower = data["tower_data"]
+                        tower_type = new_tower.get("tower_type")
+                        cost = TOWER_COSTS.get(tower_type, 999999)
+
+                        if game_state.get("player_cash", {}).get(player_id, 0) >= cost:
+                            new_tower["id"] = game_state["tower_id_counter"]
+                            new_tower["owner"] = player_id
+                            new_tower["cost"] = cost
+                            game_state["towers"].append(new_tower)
+                            game_state["tower_id_counter"] += 1
+                            game_state["player_cash"][player_id] -= cost
+
+                    elif data["type"] == "sell_tower":
+                        if "new_cash" in data:
+                            game_state["player_cash"][player_id] = data["new_cash"]
+                        for t in game_state["towers"]:
+                            if t["id"] == data["tower_id"] and t.get("owner") == player_id:
+                                game_state["towers"].remove(t)
+                                break
+
+                    elif data["type"] == "sync_upgrade":
+                        if "new_cash" in data:
+                            game_state["player_cash"][player_id] = data["new_cash"]
+                        for t in game_state["towers"]:
+                            if t["id"] == data["tower_id"] and t.get("owner") == player_id:
+                                if "path_left" in data: t["path_left"] = data["path_left"]
+                                if "path_right" in data: t["path_right"] = data["path_right"]
+                                if "target_mode" in data: t["target_mode"] = data["target_mode"]
+
+                    elif data["type"] == "start_round":
+                        if not game_state["round_started"] and len(game_state["enemies"]) == 0:
+                            from rounds import Round
+                            r = Round()
+                            r.current_round = game_state["current_round"]
+                            r.prepare_round()
+                            game_state["spawn_queue"] = [
+                                (enemy_obj.to_dict(), delay) for enemy_obj, delay in r.spawn_queue
+                            ]
+                            game_state["round_started"] = True
+                            game_state["last_spawn_time"] = time.time() * 1000
+
+                    elif data["type"] == "ubw":
+                        if game_state["abilities"]["ubw_cooldown"] == 0:
+                            game_state["abilities"]["ubw_cooldown"] = 900
+                            for e in game_state["enemies"]:
+                                e["hp"] -= 100
+                                game_state["explosions"].append({
+                                    "x": e["x"], "y": e["y"],
+                                    "timer": 10, "dmg": 0, "max_radius": 70
+                                })
+
+
+                    elif data["type"] == "return_to_lobby":
+                        if my_lobby_code in active_lobbies:
+                            lobby = active_lobbies[my_lobby_code]
+                            # Cleanly remove this connection from the lobby lists
+                            if conn in lobby['players']:
+                                lobby['players'].remove(conn)
+                            if username in lobby['usernames']:
+                                lobby['usernames'].remove(username)
+                            print(f"{username} left game/lobby {my_lobby_code} via Win Screen.")
+                            # If no players are left in the match, tear down the lobby completely
+                            if len(lobby['players']) == 0:
+                                del active_lobbies[my_lobby_code]
+                                print(f"Closed empty lobby {my_lobby_code}")
+                        game_started = False
+                        send_pickle(conn, {"action": "back_to_lobby"})
+                        break
+
+                    send_pickle(conn, game_state)
+
+                except Exception as e:
+                    print(f"Game Loop Error: {e}")
+                    authenticated = False
+                    break
+
+            if not authenticated:
                 break
 
     print(f"Lost connection. (Lobby: {my_lobby_code})")
-
-    # Clean up
+    # Clean up lobby lists
     if my_lobby_code in active_lobbies:
         lobby = active_lobbies[my_lobby_code]
         if conn in lobby['players']:
@@ -321,7 +376,6 @@ def threaded_client(conn):
     if username and online_users.get(username) == conn:
         del online_users[username]
         print(f"{username} has gone offline.")
-
     conn.close()
 
 

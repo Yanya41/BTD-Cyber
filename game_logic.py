@@ -2,20 +2,23 @@ import math
 import time
 import random
 
-# --- FIX: One instance, reused forever. No more Data() in the hot path ---
+# Global instance reference for game data
 from game_data import Data
+
 _data = Data()
 
-# --- FIX: Server-side authoritative costs ---
 TOWER_COSTS = {"goku": 550, "archer": 600, "ayanokoji": 1000}
+WINNING_ROUND = 3
 
 
 def update_round(game_state):
     """Update round spawning logic."""
+    if game_state.get("game_won", False):
+        return
+
     if not game_state["round_started"]:
         return
 
-    # --- FIX: Use time.time() instead of pygame.time.get_ticks() ---
     now = time.time() * 1000
 
     if game_state["spawn_queue"]:
@@ -27,13 +30,16 @@ def update_round(game_state):
 
     if not game_state["spawn_queue"] and not game_state["enemies"]:
         game_state["round_started"] = False
+
+        if game_state["current_round"] == WINNING_ROUND:
+            game_state["game_won"] = True
+
         game_state["current_round"] += 1
         game_state["cash"] += 100
 
 
 def update_enemies(game_state):
     """Update enemy positions and handle leaks."""
-    # --- FIX: Use the module-level _data, not Data() every frame ---
     for e in game_state["enemies"][:]:
         if e["target_index"] >= len(_data.path_points):
             game_state["current_hp"] -= e["dmg"]
@@ -54,29 +60,27 @@ def update_enemies(game_state):
 
 
 def update_towers(game_state):
-    # --- FIX: Use time.time() instead of pygame.time.get_ticks() ---
+    """Scan targets and trigger tower attacks based on current upgrade states."""
     now = time.time() * 1000
 
     for t in game_state["towers"]:
-        p_left = t.get("path_left", 0)
-        p_right = t.get("path_right", 0)
+        # --- FIX: Fallback wrapper to catch any variation of client upgrade keys ---
+        p_left = t.get("upgrade_left", t.get("path_left", t.get("left_path", 0)))
+        p_right = t.get("upgrade_right", t.get("path_right", t.get("right_path", 0)))
 
         if t["tower_type"] == "goku":
-            # Matches Goku.get_stats()
             cooldown = t.get("base_speed", 1500) - (200 if p_left >= 1 else 0)
             attack_range = t.get("base_range", 250)
 
         elif t["tower_type"] == "ayanokoji":
-            # Matches Ayanokoji.get_stats()
+            # Upgrades dynamically adjust attack speed and range
             cooldown = t.get("base_speed", 2000) - (p_right * 150)
             attack_range = t.get("base_range", 300) + (p_right * 50)
 
         else:  # archer
-            # Matches Archer.get_stats()
             cooldown = t.get("base_speed", 1000) - (200 if p_left >= 1 else 0)
             attack_range = t.get("base_range", 1000)
 
-        # Scan for enemies in range
         target = None
         if game_state["enemies"]:
             in_range = [
@@ -105,8 +109,10 @@ def update_towers(game_state):
 
 
 def spawn_attack(game_state, tower, target):
-    p_left = tower.get("path_left", 0)
-    p_right = tower.get("path_right", 0)
+    """Instantiate attacks and pass upgrade flags directly down to projectiles."""
+    # --- FIX: Robust lookup for upgrade properties on spawn ---
+    p_left = tower.get("upgrade_left", tower.get("path_left", tower.get("left_path", 0)))
+    p_right = tower.get("upgrade_right", tower.get("path_right", tower.get("right_path", 0)))
 
     if tower["tower_type"] == "goku":
         dx, dy = target["x"] - tower["x"], target["y"] - tower["y"]
@@ -118,6 +124,7 @@ def spawn_attack(game_state, tower, target):
         base_size = tower.get("base_size", 10)
 
         proj = {
+            "tower_id": tower["id"],
             "x": tower["x"], "y": tower["y"],
             "vx": math.cos(rad) * 8, "vy": math.sin(rad) * 8,
             "dmg": base_dmg + (5 if p_right >= 2 else 0),
@@ -138,14 +145,15 @@ def spawn_attack(game_state, tower, target):
         rad = math.radians(-angle)
 
         turned_pierce = (
-            3 +
-            (2 if p_left >= 1 else 0) +
-            (3 if p_left >= 2 else 0) +
-            (5 if p_left >= 3 else 0)
+                3 +
+                (2 if p_left >= 1 else 0) +
+                (3 if p_left >= 2 else 0) +
+                (5 if p_left >= 3 else 0)
         )
         proj_speed = 8 + (2 if p_right >= 1 else 0)
 
         proj = {
+            "tower_id": tower["id"],
             "x": tower["x"], "y": tower["y"],
             "vx": math.cos(rad) * proj_speed,
             "vy": math.sin(rad) * proj_speed,
@@ -167,11 +175,10 @@ def spawn_attack(game_state, tower, target):
     elif tower["tower_type"] == "archer":
         base_dmg = tower.get("base_dmg", 5)
         exp_dmg = base_dmg + (5 if p_left >= 1 else 0) + (10 if p_left >= 2 else 0)
-
-        # --- FIX: Use max_radius correctly so upgraded explosions damage the right area ---
         exp_radius = 50 + (25 if p_right >= 3 else 0)
 
         game_state["explosions"].append({
+            "tower_id": tower["id"],
             "x": target["x"], "y": target["y"],
             "timer": 10,
             "dmg": exp_dmg,
@@ -180,10 +187,9 @@ def spawn_attack(game_state, tower, target):
 
 
 def update_projectiles(game_state):
-    """Update projectiles, handle collisions, seeking, and returning."""
+    """Update projectile movements and manage scaled collision damage tracking."""
     for p in game_state["projectiles"][:]:
 
-        # SEEKING LOGIC
         if p.get("seeking") and game_state["enemies"]:
             target = min(
                 game_state["enemies"],
@@ -198,11 +204,9 @@ def update_projectiles(game_state):
                 p["vx"] = (p["vx"] / mag) * p.get("speed", 8)
                 p["vy"] = (p["vy"] / mag) * p.get("speed", 8)
 
-        # Move
         p["x"] += p["vx"]
         p["y"] += p["vy"]
 
-        # RETURN LOGIC
         if p.get("returns") and not p.get("has_returned"):
             if p["x"] < -50 or p["x"] > 1970 or p["y"] < -50 or p["y"] > 1130:
                 p["vx"] *= -1
@@ -212,25 +216,34 @@ def update_projectiles(game_state):
         # --- MANIPULATION PROJECTILE (Ayanokoji) ---
         if p.get("proj_type") == "manipulation":
             hit = False
+            p_left = p.get("upgrade_left", 0)
+            p_right = p.get("upgrade_right", 0)
+
             for e in game_state["enemies"][:]:
                 if math.hypot(p["x"] - e["x"], p["y"] - e["y"]) < 45:
-                    can_manipulate = (
-                        e.get("type") == "Skeleton" or
-                        (p.get("upgrade_left", 0) >= 3 and e.get("type") == "ShieldedSkeleton")
-                    )
+                    # --- FIX: Concrete conditions for progressive conversions ---
+                    can_manipulate = False
+                    if e.get("type") == "Skeleton":
+                        can_manipulate = True
+                    elif e.get("type") == "ShieldedSkeleton" and p_left >= 1:
+                        can_manipulate = True
+                    elif e.get("type") == "SkeletonBarrel" and p_left >= 3:
+                        can_manipulate = True
+
                     if can_manipulate:
                         turned = {
                             "id": _next_id(),
+                            "tower_id": p.get("tower_id"),
                             "x": e["x"],
                             "y": e["y"],
-                            "speed": e["speed"] * (1.5 if p.get("upgrade_right", 0) >= 1 else 1.0),
+                            "speed": e["speed"] * (1.5 if p_right >= 1 else 1.0),
                             "target_index": e["target_index"],
                             "pierce": p.get("turned_pierce", 3),
                             "hit_enemies": [],
                             "type": "TurnedSkeleton",
-                            "can_hit_barrel": p.get("upgrade_right", 0) >= 3
+                            "can_hit_barrel": p_right >= 3
                         }
-                        game_state["turned_enemies"].append(turned)  # CHANGED
+                        game_state["turned_enemies"].append(turned)
                         game_state["enemies"].remove(e)
                         if p in game_state["projectiles"]:
                             game_state["projectiles"].remove(p)
@@ -239,7 +252,6 @@ def update_projectiles(game_state):
             if hit:
                 continue
 
-            # Remove off-screen manipulation projectile
             if p["x"] < -100 or p["x"] > 2020 or p["y"] < -100 or p["y"] > 1180:
                 if p in game_state["projectiles"]:
                     game_state["projectiles"].remove(p)
@@ -249,7 +261,16 @@ def update_projectiles(game_state):
         hit_occurred = False
         for e in game_state["enemies"]:
             if e["id"] not in p.get("hit_enemies", []) and math.hypot(p["x"] - e["x"], p["y"] - e["y"]) < 45:
+
+                # --- FIX: Cap damage credit to the exact health remaining ---
+                actual_dmg = max(0, min(p["dmg"], e["hp"]))
                 e["hp"] -= p["dmg"]
+
+                if "tower_id" in p and actual_dmg > 0:
+                    for t in game_state["towers"]:
+                        if t["id"] == p["tower_id"]:
+                            t["damage_dealt"] += actual_dmg
+
                 p["hit_enemies"].append(e["id"])
                 p["pierce"] -= 1
                 hit_occurred = True
@@ -268,13 +289,12 @@ def update_projectiles(game_state):
 
 
 def update_turned_skeletons(game_state):
-    """Move turned skeletons backwards along the path, damaging enemies they collide with."""
-    for ts in game_state["turned_enemies"][:]:  # CHANGED
-
+    """Move turned skeletons backwards, tracking non-excess damage profiles."""
+    for ts in game_state["turned_enemies"][:]:
         target_index = ts["target_index"] - 1
 
         if target_index < 0:
-            game_state["turned_enemies"].remove(ts)  # CHANGED
+            game_state["turned_enemies"].remove(ts)
             continue
 
         target_x, target_y = _data.path_points[target_index]
@@ -289,36 +309,51 @@ def update_turned_skeletons(game_state):
         if dist < ts["speed"]:
             ts["target_index"] -= 1
 
-        # Collision with enemies
         for e in game_state["enemies"][:]:
             if e["id"] not in ts["hit_enemies"]:
                 if math.hypot(ts["x"] - e["x"], ts["y"] - e["y"]) < 40:
                     if e.get("type") == "SkeletonBarrel" and not ts.get("can_hit_barrel"):
                         continue
+
+                    # --- FIX: Max damage tracking for converted minions ---
+                    actual_dmg = max(0, min(1, e["hp"]))
                     e["hp"] -= 1
+
+                    if "tower_id" in ts and actual_dmg > 0:
+                        for t in game_state["towers"]:
+                            if t["id"] == ts["tower_id"]:
+                                t["damage_dealt"] += actual_dmg
+
                     ts["hit_enemies"].append(e["id"])
                     ts["pierce"] -= 1
                     if ts["pierce"] <= 0:
-                        if ts in game_state["turned_enemies"]:  # CHANGED
-                            game_state["turned_enemies"].remove(ts)  # CHANGED
+                        if ts in game_state["turned_enemies"]:
+                            game_state["turned_enemies"].remove(ts)
                         break
 
 
 def update_explosions(game_state):
-    """Update explosions and damage enemies."""
+    """Process area explosions and register non-excess combat data."""
     for ex in game_state["explosions"][:]:
         ex["timer"] -= 1
         if ex["timer"] == 5:
             for e in game_state["enemies"]:
-                # --- FIX: Use max_radius for damage check, not hardcoded 50 ---
                 if math.hypot(e["x"] - ex["x"], e["y"] - ex["y"]) < ex["max_radius"]:
+
+                    # --- FIX: Prevent excess damage additions from AoE bursts ---
+                    actual_dmg = max(0, min(ex["dmg"], e["hp"]))
                     e["hp"] -= ex["dmg"]
+
+                    if "tower_id" in ex and actual_dmg > 0:
+                        for t in game_state["towers"]:
+                            if t["id"] == ex["tower_id"]:
+                                t["damage_dealt"] += actual_dmg
         if ex["timer"] <= 0:
             game_state["explosions"].remove(ex)
 
 
 def remove_dead_enemies(game_state):
-    """Remove dead enemies, give cash, and handle Barrel splitting."""
+    """Clean up dead targets and manage split logic."""
     surviving = []
     new_spawns = []
 
@@ -339,7 +374,6 @@ def remove_dead_enemies(game_state):
                         "dmg": 1,
                         "cash_price": 1,
                         "type": "Skeleton",
-                        # --- FIX: Use the safe incrementing ID counter ---
                         "id": _next_id()
                     }
                     new_spawns.append(new_skel)
@@ -348,7 +382,7 @@ def remove_dead_enemies(game_state):
 
 
 def update_game_state(game_state):
-    """Main update function."""
+    """Main core engine update tick loop."""
     update_round(game_state)
     update_enemies(game_state)
     update_towers(game_state)
@@ -359,8 +393,8 @@ def update_game_state(game_state):
     game_state["abilities"]["ubw_cooldown"] = max(0, game_state["abilities"]["ubw_cooldown"] - 1)
 
 
-# --- FIX: Safe server-side ID counter, no more random collision risk ---
 _id_counter = 0
+
 
 def _next_id():
     global _id_counter
